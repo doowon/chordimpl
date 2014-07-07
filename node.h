@@ -9,19 +9,19 @@
 
 #define FT_SIZE 3
 
-struct fingerTable{
-	int start;
-	int intervalStart;
-	int intervalEnd;
-	int node;
-	int succesor;
+struct _Node;
+typedef struct _Node Node;
+
+struct FingerTable{
+	int start; ///(n + 2^(k-1))
+	Node* successor;
 };
 
-typedef struct {
+struct _Node{
 	int id;
 	int key[10];
-	struct fingerTable ft[FT_SIZE];
-} node;
+	struct FingerTable ft[FT_SIZE];
+};
 
 
 

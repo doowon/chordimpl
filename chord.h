@@ -12,6 +12,12 @@
 #include <stdio.h>
 #include <math.h>
 
+#define DEBUG 1
+
+typedef int bool;
+#define true 1
+#define false 0
+
 #define MAX_NUM_NODE 3
 /**
  * create chord nodes
@@ -31,6 +37,12 @@ int createNode();
  * @return [description]
  */
 int assignKey();
+
+Node* findId(int id);
+int buildFingerTable(Node* nd);
+Node* findSuccessor(Node* nd, int targetId);
+Node* findPredecessor(Node* nd, int targetId);
+Node* closestPrecedingFinger(Node* nd, int targetId, bool* circled);
 
 /*
  * DEBUG PRINTER
