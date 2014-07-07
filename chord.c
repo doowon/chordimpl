@@ -89,15 +89,15 @@ int assignKey() {
 	return 0;
 }
 
-int findSuccesor(node* nd, int id) {
-	int n = findPredecessor(nd, id);
-	return n.succesor;
-}
+// int findSuccesor(node* nd, int id) {
+// 	int n = findPredecessor(nd, id);
+// 	return n.succesor;
+// }
 
-int findPredecessor(node* nd, int id) {
-	int i = 0;
+// int findPredecessor(node* nd, int id) {
+// 	int i = 0;
 	
-}
+// }
 
 int closestPrecedingFinger(node* nd, int id) {
 	int i = 0;
