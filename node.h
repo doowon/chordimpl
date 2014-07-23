@@ -19,8 +19,12 @@
 #include <time.h>
 #include <pthread.h>
 #include <errno.h>
+#include <math.h>
 
 #define FT_SIZE 3
+#define NUM_SLIST (int)pow(2, FT_SIZE)
+#define IPADDR_SIZE 15
+#define NUM_KEYS 10
 
 #define DEBUG 1
 
@@ -35,16 +39,20 @@ struct NodeInfo{
 
 struct FingerTable{
 	int start; ///(n + 2^(k-1))
-	struct NodeInfo successorInfo;
+	struct NodeInfo sInfo;
 };
-
+struct Successor {
+	struct NodeInfo info;
+	struct NodeInfo sInfo;  /// successor Info
+};
 struct _Node{
 	struct NodeInfo ndInfo;
-	int key[10]; 				/// Array of keys
+	uint32_t key[NUM_KEYS]; 			/// Array of keys
 	int keySize; 				/// the number of keys
 	struct NodeInfo predInfo;
 	struct FingerTable ft[FT_SIZE];
 	int ftSize;
+	struct Successor sList[8];  /// successor list
 };
 
 int listenfd; 					/// socket for listener(server)
@@ -61,26 +69,33 @@ char recvBufCli[16];			/// recv buffer for client
 
 pthread_t tid[2];				/// pthread (server, client, stablizing)
 
+
 int initNode(uint32_t nodeId);
+void pthreadJoin();
 void initServerSocket();
 int listenServerSocket();
 int connectToServer(char* ipAddr, uint16_t port);
+int checkConnection(char* ipAddr, uint16_t port);
 int readFromSocket(int fd, char* buf);
 int writeToSocket(int fd, char* buf);
 void loopStablize();
 int closeSocket(int socketfd);
-int createReqPkt(char* buf, uint32_t targetId, uint32_t successorId, 
+void createReqPkt(char* buf, uint32_t targetId, uint32_t successorId, 
 					char* ipAddr, uint16_t port, int res);
-int createResPkt(char* buf, uint32_t targetId, uint32_t successorId, 
+void createResPkt(char* buf, uint32_t targetId, uint32_t successorId, 
 					char* ipAddr, uint16_t port, int res);
+void createKeyResPkt(char* buf, uint32_t keys[], int num);
 int parse(char* buf, uint32_t* targetId, uint32_t* successorId, 
 					char* ipAddr, uint16_t* port);
+int parseForKeyResPkt(char* buf, uint32_t keys[], int* num);
 int sendReqPkt(uint32_t targetId, uint32_t successorId, 
 						char* ipAddr, uint16_t port);
 int recvResPkt(uint32_t targetId, uint32_t* successorId, 
 						char* ipAddr, uint16_t* port);
-int sendAskPkt(uint32_t sId, char* sIpAddr, uint16_t sPort,
-				uint32_t* predId, char* predIpAddr, uint16_t* predPort);
+int recvKeyResPkt(uint32_t keys[], int* num);
+int sendAskSuccForPredPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
+int sendAskSuccForSuccPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
+int sendAskSuccForKeyPkt(uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort);
 int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort,
 					uint32_t id, char* ipAddr, uint16_t port);
 #endif
