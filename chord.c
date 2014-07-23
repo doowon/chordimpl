@@ -23,6 +23,7 @@ int initChord(uint32_t nodeId) {
 	
 	// these three lines are for test,
 	// TODO: keys should be given by parameters 
+#if 0
 	if (nodeId == 5) { 
 		nd->key[0] = 2;
 		nd->key[1] = nodeId;
@@ -32,7 +33,7 @@ int initChord(uint32_t nodeId) {
 		nd->keySize = 1;
 	}
 	// END - TEST LINE 
-
+#endif
 
 	//init the finger table
 	int i = 0;
@@ -221,11 +222,15 @@ void stabilize() {
 	n = checkConnection(sIpAddr, sPort);
 	if (n < 0) {
 		int i = 0;
-		for (i = 0; i < (int)pow(2, FT_SIZE); ++i) {
+		for (i = 1; i < (int)pow(2, FT_SIZE); ++i) {
 			sId = nd->sList[i].sInfo.id;
 			sPort = nd->sList[i].sInfo.port;
 			strcpy(sIpAddr, nd->sList[i].sInfo.ipAddr);
 			if (checkConnection(sIpAddr, sPort) >= 0)
+				nd->ft[0].sInfo.id = sId;
+				nd->ft[0].sInfo.port = sPort;
+				strcpy(nd->ft[0].sInfo.ipAddr, sIpAddr);
+				printFT();
 				break;
 		}
 	}
@@ -240,7 +245,8 @@ void stabilize() {
 	if (n < 0) return;
 
 	if (nd->ndInfo.id != predId) {
-		if (nd->predInfo.port != 0) { //this node is not just joining.
+		//this node is not just joining & connect
+		if (nd->predInfo.port != 0 && checkConnection(predIpAddr,predPort)>=0){ 
 			nd->ft[0].sInfo.id = predId;
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
 			nd->ft[0].sInfo.port = predPort;
