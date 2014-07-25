@@ -13,6 +13,12 @@
  * @return            [description]
  */
 int initChord(uint32_t nodeId) {
+
+	if (pthread_mutex_init(&lock, NULL) != 0) {
+		printf("mutex init failed\n");
+		abort();
+	}
+
 	nd = malloc(sizeof(Node));
 	nd->ndInfo.id = nodeId;
 	strcpy(nd->ndInfo.ipAddr, IP_ADDR);
@@ -21,6 +27,8 @@ int initChord(uint32_t nodeId) {
 	nd->predInfo.id = 0;  	//init predecessor id 
 	nd->predInfo.port = 0;  //init predecessor port
 	
+	// print = 0;
+
 	// these three lines are for test,
 	// TODO: keys should be given by parameters 
 #if 0
@@ -60,6 +68,8 @@ int initChord(uint32_t nodeId) {
 	
 	if (nodeId >= 2)
 		join();
+
+
 
 	return 0;
 }
@@ -202,14 +212,12 @@ void join() {
  */
 void stabilize() {
 
+	// print++;
+	
 	uint32_t sId = nd->ft[0].sInfo.id;
 	uint16_t sPort = nd->ft[0].sInfo.port;
 	char sIpAddr[15];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
-
-	if (sId == 0 || sPort == 0) {
-		return;
-	}
 
 	// keys transfer
 	// ask the successor's keys
@@ -217,6 +225,10 @@ void stabilize() {
 	uint32_t keys[NUM_KEYS];
 	int num = 0;
 	int n = 0;
+	
+	if (sId == 0 || sPort == 0) {
+		return;
+	}
 
 	// To check to see if the successor fails
 	n = checkConnection(sIpAddr, sPort);
@@ -230,11 +242,10 @@ void stabilize() {
 				nd->ft[0].sInfo.id = sId;
 				nd->ft[0].sInfo.port = sPort;
 				strcpy(nd->ft[0].sInfo.ipAddr, sIpAddr);
-				printFT();
+				// printFT();
 				break;
 		}
 	}
-
 
 	//ask succesor for its predecessor
 	uint32_t predId = 0;
@@ -244,14 +255,20 @@ void stabilize() {
 	n = askSuccForPred(sId, sIpAddr, sPort, &predId, predIpAddr, &predPort);
 	if (n < 0) return;
 
+printf("PredID1: %lu SID: %lu\n", (unsigned long) predId, (unsigned long) sId);
+fflush(stdout);
 	if (nd->ndInfo.id != predId) {
 		//this node is not just joining & connect
 		if (nd->predInfo.port != 0 && checkConnection(predIpAddr,predPort)>=0){ 
+printf("PredID2: %lu\n", (unsigned long) predId);
+fflush(stdout);
 			nd->ft[0].sInfo.id = predId;
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
 			nd->ft[0].sInfo.port = predPort;
 		}
+
 		notify(nd->ndInfo);
+
 		if (sId != nd->ndInfo.id) {
 			n = askSuccForKeys(id, sId, sIpAddr, sPort, keys, &num);
 			int i = 0;
@@ -264,7 +281,6 @@ void stabilize() {
 		// sort key array
 		qsort(nd->key, nd->keySize, sizeof(int), cmpfunc);
 	}
-	
 	printDebug();
 
 	if (!(nd->ft[0].sInfo.id == 0 || nd->ft[0].sInfo.port == 0 ||
@@ -272,8 +288,8 @@ void stabilize() {
 		nd->ft[0].sInfo.port == nd->ndInfo.port ||
 		nd->predInfo.id == 0)) {
 		
-		buildSuccessorList();
-		printSuccList();
+		// buildSuccessorList();
+		// printSuccList();
 	}	
 }
 
@@ -395,16 +411,19 @@ int askSuccForPred(uint32_t sId, char* sIpAddr, uint16_t sPort,
  * @return           [description]
  */
 void notify(struct NodeInfo pNodeInfo) {
-
+	pthread_mutex_lock(&lock);
 	uint32_t sId = nd->ft[0].sInfo.id;
 	uint16_t sPort = nd->ft[0].sInfo.port;
 	char sIpAddr[15];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
+	uint32_t pid = nd->predInfo.id;
 
-	if ((nd->predInfo.port == 0) || nd->ndInfo.id == pNodeInfo.id) { 
+	if ((pid == 0) || nd->ndInfo.id == pNodeInfo.id) {
+printf("Notify: %lu ID: %lu", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
 		sendNotifyPkt(sId, sIpAddr, sPort, 
 						nd->ndInfo.id, nd->ndInfo.ipAddr, nd->ndInfo.port);
 	}
+	pthread_mutex_unlock(&lock);
 }
 
 /**
@@ -417,7 +436,7 @@ void fixFingers() {
 	uint16_t sPort = 0;
 	char sIpAddr[15];
 	uint32_t targetId = 0;
-	
+
 	for (i = 1; i < nd->ftSize; ++i) {
 		targetId = nd->ft[i].start;
 		if (targetId <= nd->ft[i-1].sInfo.id) {
@@ -438,8 +457,7 @@ void fixFingers() {
 			}
 		}
 	}
-
-	printFT();
+	// printFT();
 }
 
 /**
@@ -449,15 +467,19 @@ void fixFingers() {
  * @param port   predecessor port
  */
 void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port) {
+	// pthread_mutex_lock(&lock);
 	*id = nd->predInfo.id;
 	strcpy(ipAddr, nd->predInfo.ipAddr);
 	*port = nd->predInfo.port;
+	// pthread_mutex_unlock(&lock);
 }
 
 void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
+	// pthread_mutex_lock(&lock);
 	*id = nd->ft[0].sInfo.id;
 	strcpy(ipAddr, nd->ft[0].sInfo.ipAddr);
 	*port = nd->ft[0].sInfo.port;
+	// pthread_mutex_unlock(&lock);
 }
 
 /**
@@ -467,6 +489,7 @@ void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
  * @param num  The number of the returned keys 
  */
 void getKeys(uint32_t id, int keys[], int* num) {
+	// pthread_mutex_lock(&lock);
 	int i = 0; int j = 0;
 	int size = nd->keySize;
 	for (i = 0; i < size; ++i) {
@@ -474,7 +497,10 @@ void getKeys(uint32_t id, int keys[], int* num) {
 			keys[j++] = nd->key[i];
 		}
 	}
-	if (j == 0) return;
+	if (j == 0) {
+		return;
+		// pthread_mutex_unlock(&lock);
+	}
 
 	// remove keys from list
 	// TODO: Make it sure that the keys transferred
@@ -485,6 +511,7 @@ void getKeys(uint32_t id, int keys[], int* num) {
 	} 
 	nd->keySize = size - j;
 	*num = j;
+	// pthread_mutex_unlock(&lock);
 }
 
 /**
@@ -494,9 +521,12 @@ void getKeys(uint32_t id, int keys[], int* num) {
  * @param port   predecessor port
  */
 void modifyPred(uint32_t id, char* ipAddr, uint16_t port) {
+pthread_mutex_lock(&lock);
 	nd->predInfo.id = id;
 	nd->predInfo.port = port;
 	strcpy(nd->predInfo.ipAddr, ipAddr);
+printf("ModifyPred: %lu\n", (unsigned long) id);
+pthread_mutex_unlock(&lock);
 }
 
 void printDebug() {

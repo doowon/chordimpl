@@ -21,12 +21,13 @@
 #include <errno.h>
 #include <math.h>
 
-#define FT_SIZE 3
+#define FT_SIZE 10
 #define NUM_SLIST (int)pow(2, FT_SIZE)
 #define IPADDR_SIZE 15
-#define NUM_KEYS 10
+#define NUM_KEYS 1024
+#define SLIST_SIZE 1024
 
-#define DEBUG 1
+#define DEBUG 0
 
 struct _Node;
 typedef struct _Node Node;
@@ -52,7 +53,7 @@ struct _Node{
 	struct NodeInfo predInfo;
 	struct FingerTable ft[FT_SIZE];
 	int ftSize;
-	struct Successor sList[8];  /// successor list
+	struct Successor sList[SLIST_SIZE];  /// successor list
 };
 
 int listenfd; 					/// socket for listener(server)
@@ -68,7 +69,7 @@ char recvBufServ[16];			/// recv buffer for server (8byte)
 char recvBufCli[16];			/// recv buffer for client
 
 pthread_t tid[2];				/// pthread (server, client, stablizing)
-
+pthread_mutex_t lock;			/// pthrea lock
 
 int initNode(uint32_t nodeId);
 void pthreadJoin();

@@ -3,8 +3,6 @@
 #include "chord.h"
 #include "node.h"
 
-#define DEBUG 1
-
 /**
  * 
  */

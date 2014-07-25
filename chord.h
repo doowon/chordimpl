@@ -13,8 +13,6 @@
 #include <math.h>
 #include <inttypes.h>
 
-#define DEBUG 1
-
 typedef int bool;
 #define true 1
 #define false 0
@@ -24,6 +22,9 @@ typedef int bool;
 #define DEFAULT_NODE_ID 1
 
 Node* nd;
+pthread_mutex_t lock;			/// pthrea lock
+
+int print;
 
 int initChord(uint32_t nodeId);
 int findSuccessor(uint32_t targetId, uint32_t* successorId, 
