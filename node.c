@@ -12,7 +12,7 @@
  * @param  nodeId     [description]
  * @return            [description]
  */
-int initNode(uint32_t nodeId) {
+int initNode(uint32_t nodeId, unsigned int fTime) {
 	int err = -1;
 	uint16_t port = DEFAULT_PORT + nodeId;
 	
@@ -32,11 +32,17 @@ int initNode(uint32_t nodeId) {
 		abort();
 	}
 
-	pthread_join(tid[0],NULL);
-	pthread_join(tid[1],NULL);
+	if (fTime > 0) {
+		sleep(fTime);
+	} else {
+		pthread_join(tid[0],NULL);
+		pthread_join(tid[1],NULL);
+	}
 	
 	pthread_mutex_destroy(&lock);
 	
+	close(listenfd);
+	abort();
 	return 0;
 }
 
@@ -47,10 +53,12 @@ int initNode(uint32_t nodeId) {
 void initServerSocket(void* port2) {
 	uint16_t* port = (uint16_t*) port2;
 	listenfd = 0;
-	int iSetOption = 1;
 	listenfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	/*
+	int iSetOption = 1;
 	setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char*)&iSetOption,
         sizeof(iSetOption));
+	*/
 	memset(&servAdr, 0, sizeof(servAdr));
 	memset(sendBufServ, 0, sizeof(sendBufServ));
 
@@ -68,7 +76,7 @@ void initServerSocket(void* port2) {
 }
 
 int listenServerSocket() {
-	listen(listenfd, 100);
+	listen(listenfd, 5);
 
 	while(1) {
 		connfd = accept(listenfd, (struct sockaddr*)NULL, NULL);
@@ -76,6 +84,7 @@ int listenServerSocket() {
 		//receive messages
 		if (readFromSocket(connfd, recvBufServ) < 0) {
 			// printf("read error");
+			closeSocket(connfd);
 			return -1;
 		}
 
@@ -98,6 +107,7 @@ int listenServerSocket() {
 		
 		case -1: //error occured
 			printf("server: error occured\n");
+			closeSocket(connfd);
 			break;
 		case 1: //request
 			// printf("server: find successor request received\n");
@@ -115,7 +125,7 @@ int listenServerSocket() {
 			closeSocket(connfd);
 			break;
 		case 4:  //modify its predecessor
-			printf("Modify\n");
+			printf("Modify \n");
 			predId = successorId;
 			modifyPred(predId, ipAddr, port);
 			closeSocket(connfd);
@@ -155,33 +165,30 @@ int connectToServer(char* ipAddr, uint16_t port) {
 	memset(&servAdrCli, 0, sizeof(servAdrCli));
 	
 	if((connfdCli = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		// printf("openning socket error occured\n");
+		printf("openning socket error occured\n");
 		return -1;
 
 	}
 	servAdrCli.sin_family = AF_INET;
-	// if (port == 0) 
-		// port = DEFAULT_PORT;
 	servAdrCli.sin_port = htons(port);
 
-	if(inet_pton(AF_INET, ipAddr, &servAdrCli.sin_addr) <= 0) {
-		// printf("converting %s from a string error occured\n", ipAddr);
+	if(inet_pton(AF_INET, ipAddr, &servAdrCli.sin_addr) < 0) {
+		printf("converting %s from a string error occured\n", ipAddr);
 		return -1;
 	}
 
 	if(connect(connfdCli, (struct sockaddr*)&servAdrCli, sizeof(servAdrCli))<0){
-		// printf("Connection failed %s: %lu, %s\n", ipAddr, (unsigned long) port,
-			// strerror(errno));
+		printf("%d %s Connection failed %s: %lu, %s\n", __LINE__, __FILE__, 
+			ipAddr, (unsigned long) port, strerror(errno));
 		return -1;
 	}
-
 	return 0;
 }
 
-int checkConnection(char* ipAddr, uint16_t port) {
+int checkConnection(char ipAddr[], uint16_t port) {
+printf("%i %s %s %i\n", __LINE__, __FILE__, ipAddr, port);
 	int n = connectToServer(ipAddr, port);
 	closeSocket(connfdCli);
-
 	return n;
 }
 
@@ -202,15 +209,16 @@ int writeToSocket(int fd, char* buf) {
 void loopStablize() {
 
 	while (1) {
-		sleep(0.5);
+		// sleep(0.5);
+		usleep(500 * 1000);
 		stabilize();
-		fixFingers();
+		// fixFingers();
 	}	
 	pthread_exit(0); //exit
 }
 
 int closeSocket(int socketfd) {
-	close(socketfd);
+	return close(socketfd);
 }
 
 /**
@@ -328,11 +336,11 @@ void createKeyResPkt(char* buf, uint32_t keys[], int num) {
  * @param  buf [description]
  * @return     [description]
  */
-int parse(char* buf, uint32_t* targetId, uint32_t* successorId, 
+int parse(char buf[], uint32_t* targetId, uint32_t* successorId, 
 			char* ipAddr, uint16_t* port) {
 	
-	if (buf[0] & 0xFF != 0xC0) {
-		// printf("Received packet not have 0xC0\n");
+	if ((buf[0] & 0xFF) != 0xC0) {
+printf("Received packet does NOT have 0xC0\n");
 		return -1;
 	}
 
@@ -340,7 +348,7 @@ int parse(char* buf, uint32_t* targetId, uint32_t* successorId,
 	*port = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
 
 	//IP
-	uint32_t ip = (buf[4]&0xFF) << 8*3 | (buf[5]&0xFF)&0xFF << 8*2 
+	uint32_t ip = (buf[4]&0xFF) << 8*3 | (buf[5]&0xFF) << 8*2 
 					| (buf[6]&0xFF) << 8 | (buf[7]&0xFF);
 	inet_ntop(AF_INET, &(ip), ipAddr, INET_ADDRSTRLEN);
 	*successorId = ((buf[8]&0xFF) << 8*3) 
@@ -352,7 +360,7 @@ int parse(char* buf, uint32_t* targetId, uint32_t* successorId,
 	return (buf[1]&0xFF);
 }
 int parseForKeyResPkt(char* buf, uint32_t keys[], int* num) {
-	if (buf[0] & 0xFF != 0xC0) {
+	if ((buf[0] & 0xFF) != 0xC0) {
 		// printf("Received packet not have 0xC0\n");
 		return -1;
 	}
@@ -360,10 +368,18 @@ int parseForKeyResPkt(char* buf, uint32_t keys[], int* num) {
 	*num = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
 
 	//keys
-	int i = 0; int j = 4;
+	int i = 0; 
+	int j = 4;
 	for (i = 0; i < *num; ++i) {
-		keys[i] = (buf[j++]&0xFF) << 8*3 | (buf[j++]&0xFF) << 8*2 
-					| (buf[j++]&0xFF) << 8 | (buf[j++]&0xFF);
+		uint32_t tmp = (buf[j++]&0xFF) << 8*3;
+		tmp |= (buf[j++]&0xFF) << 8*2;
+		tmp |= (buf[j++]&0xFF) << 8;
+		tmp |= (buf[j++]&0xFF);
+		keys[i] = tmp;
+		
+		//it produces sequence-point error
+		// keys[i] = (buf[j++]&0xFF) << 8*3 | (buf[j++]&0xFF) << 8*2 
+					// | (buf[j++]&0xFF) << 8 | (buf[j++]&0xFF);
 	}
 	return (buf[1]&0xFF);
 
@@ -371,45 +387,57 @@ int parseForKeyResPkt(char* buf, uint32_t keys[], int* num) {
 int sendReqPkt(uint32_t targetId, uint32_t successorId, 
 					char* ipAddr, uint16_t port) {
 	int n = connectToServer(ipAddr, port);
-	if (n == -1) { //conection failed
-		return n;
+	if (n < 0) { //conection failed
+		closeSocket(connfdCli);
+		return -1;
 	}
 	char buf[16];
 	createReqPkt(buf, targetId, successorId, ipAddr, port, 1);
 	writeToSocket(connfdCli, buf);
+
+	return 0; //success
 }
 
 int sendAskSuccForPredPkt(uint32_t sId, char* sIpAddr, uint16_t sPort) {
 	int n = connectToServer(sIpAddr, sPort);
 	if (n < 0) {
 		// printf("Connection to %s, %lu failed\n", sIpAddr, (unsigned long)sPort);
+		closeSocket(connfdCli);
 		return -1;
 	}
 	char buf[16];
 	createReqPkt(buf, 0, sId, sIpAddr, sPort, 3);
 	writeToSocket(connfdCli, buf);
+
+	return 0; //success
 }
 
 int sendAskSuccForSuccPkt(uint32_t sId, char* sIpAddr, uint16_t sPort) {
 	int n = connectToServer(sIpAddr, sPort);
 	if (n < 0) {
 		// printf("Connection to %s, %lu failed\n", sIpAddr, (unsigned long)sPort);
+		closeSocket(connfdCli);
 		return -1;
 	}
 	char buf[16];
 	createReqPkt(buf, 0, sId, sIpAddr, sPort, 5);
 	writeToSocket(connfdCli, buf);
+
+	return 0; //success
 }
 
 int sendAskSuccForKeyPkt(uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort) {
 	int n = connectToServer(sIpAddr, sPort);
 	if (n < 0) {
 		// printf("Connection to %s, %lu failed\n", sIpAddr, (unsigned long)sPort);
+		closeSocket(connfdCli);
 		return -1;
 	}
 	char buf[16];
 	createReqPkt(buf, id, sId, sIpAddr, sPort, 6);
 	writeToSocket(connfdCli, buf);
+
+	return 0; //success
 }
 
 int recvResPkt(uint32_t targetId, uint32_t* successorId, 
@@ -417,6 +445,7 @@ int recvResPkt(uint32_t targetId, uint32_t* successorId,
 	int n = readFromSocket(connfdCli, recvBufCli);
 	if(n < 0) {
 		// printf("read error");
+		closeSocket(connfdCli);
 		return -1;
 		// abort();
 	}
@@ -429,6 +458,7 @@ int recvKeyResPkt(uint32_t keys[], int* num) {
 	int n = readFromSocket(connfdCli, recvBufCli);
 	if(n < 0) {
 		// printf("read error");
+		closeSocket(connfdCli);
 		return -1;
 	}
 	int ret = parseForKeyResPkt(recvBufCli, keys, num);
@@ -441,10 +471,13 @@ int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort,
 	int n = connectToServer(sIpAddr, sPort);
 	if (n < 0) {
 		printf("Connection to %s, %lu failed\n", sIpAddr, (unsigned long)sPort);
+		closeSocket(connfdCli);
 		return -1;
 		// abort();
 	}
 	char buf[16];
 	createReqPkt(buf, sId, id, ipAddr, port, 4);
 	writeToSocket(connfdCli, buf);
+
+	return 0; //success
 }

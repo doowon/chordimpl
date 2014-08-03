@@ -71,7 +71,7 @@ char recvBufCli[16];			/// recv buffer for client
 pthread_t tid[2];				/// pthread (server, client, stablizing)
 pthread_mutex_t lock;			/// pthrea lock
 
-int initNode(uint32_t nodeId);
+int initNode(uint32_t nodeId, unsigned int fTime);
 void pthreadJoin();
 void initServerSocket();
 int listenServerSocket();

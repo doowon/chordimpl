@@ -22,7 +22,7 @@ typedef int bool;
 #define DEFAULT_NODE_ID 1
 
 Node* nd;
-pthread_mutex_t lock;			/// pthrea lock
+extern pthread_mutex_t lock;			/// pthrea lock
 
 int print;
 
@@ -42,7 +42,7 @@ int askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr,
 					uint16_t sPort, uint32_t keys[], int *num);
 void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port);
 void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port);
-void getKeys(uint32_t id, int keys[], int* num);
+void getKeys(uint32_t id, uint32_t keys[], int* num);
 void stabilize();
 void notify(struct NodeInfo pNodeInf);
 void buildSuccessorList();

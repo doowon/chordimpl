@@ -69,8 +69,6 @@ int initChord(uint32_t nodeId) {
 	if (nodeId >= 2)
 		join();
 
-
-
 	return 0;
 }
 
@@ -184,26 +182,47 @@ int closestPrecedingFinger(uint32_t targetId, uint32_t* successorId,
  * @return [description]
  */
 void join() {
-	char ipAddr[15];
-	strcpy(ipAddr, IP_ADDR);
-	uint32_t sId = DEFAULT_NODE_ID;
-	uint32_t targetId = nd->ndInfo.id;
-	uint16_t port = DEFAULT_PORT + DEFAULT_NODE_ID;
+	while (true) {
+		char ipAddr[15];
+		strcpy(ipAddr, IP_ADDR);
+		uint32_t sId = DEFAULT_NODE_ID;
+		uint32_t targetId = nd->ndInfo.id;
+		uint16_t port = DEFAULT_PORT + DEFAULT_NODE_ID;
 
-	int n = findInitSuccessor(targetId, &sId, ipAddr, &port);
-	if (n == 2) {
-		nd->ft[0].sInfo.id = sId;
-		strcpy(nd->ft[0].sInfo.ipAddr, ipAddr);
-		nd->ft[0].sInfo.port = port;
+		uint32_t predId = 0;
+		uint16_t predPort = 0;
+		char predIpAddr[15];
+		
+		int n = findInitSuccessor(targetId, &sId, ipAddr, &port);		
+		if (n == 2) {
+			n = askSuccForPred(sId, ipAddr, port, 
+								&predId, predIpAddr, &predPort);
 
-		int i = 0;
-		for (i = 0; i < nd->ftSize; ++i) {
-			if (nd->ft[i].start <= sId) {
-				nd->ft[i].sInfo.id = sId;
-				strcpy(nd->ft[i].sInfo.ipAddr, ipAddr);
-				nd->ft[i].sInfo.port = port;
+printf("[Join] Found SID %lu, PID %lu \n",(unsigned long)sId, 
+											(unsigned long)predId);
+
+			if (n < 0) {
+				printf("Join Failed");
+				return;
+			} else if (predId > nd->ndInfo.id) {
+				usleep(500 * 1000);
+				continue;
+			}
+
+			nd->ft[0].sInfo.id = sId;
+			strcpy(nd->ft[0].sInfo.ipAddr, ipAddr);
+			nd->ft[0].sInfo.port = port;
+
+			int i = 0;
+			for (i = 0; i < nd->ftSize; ++i) {
+				if (nd->ft[i].start <= sId) {
+					nd->ft[i].sInfo.id = sId;
+					strcpy(nd->ft[i].sInfo.ipAddr, ipAddr);
+					nd->ft[i].sInfo.port = port;
+				}
 			}
 		}
+		break;
 	}
 }
 
@@ -213,7 +232,7 @@ void join() {
 void stabilize() {
 
 	// print++;
-	
+printf("Stablizing start\n");
 	uint32_t sId = nd->ft[0].sInfo.id;
 	uint16_t sPort = nd->ft[0].sInfo.port;
 	char sIpAddr[15];
@@ -231,10 +250,14 @@ void stabilize() {
 	}
 
 	// To check to see if the successor fails
+	printf("check connection\n");
 	n = checkConnection(sIpAddr, sPort);
 	if (n < 0) {
+		printf("Connection Failed\n");
 		int i = 0;
 		for (i = 1; i < (int)pow(2, FT_SIZE); ++i) {
+			if (nd->sList[i].sInfo.id <= 0)
+				return;
 			sId = nd->sList[i].sInfo.id;
 			sPort = nd->sList[i].sInfo.port;
 			strcpy(sIpAddr, nd->sList[i].sInfo.ipAddr);
@@ -253,14 +276,17 @@ void stabilize() {
 	char predIpAddr[15];
 	
 	n = askSuccForPred(sId, sIpAddr, sPort, &predId, predIpAddr, &predPort);
-	if (n < 0) return;
+	if (n < 0) {
+printf("askSuccForPred error\n");
+		return;
+	}
 
-printf("PredID1: %lu SID: %lu\n", (unsigned long) predId, (unsigned long) sId);
+printf("[Stabilzing] PredID1: %lu SID: %lu\n", (unsigned long) predId, (unsigned long) sId);
 fflush(stdout);
 	if (nd->ndInfo.id != predId) {
 		//this node is not just joining & connect
 		if (nd->predInfo.port != 0 && checkConnection(predIpAddr,predPort)>=0){ 
-printf("PredID2: %lu\n", (unsigned long) predId);
+printf("[Stabilzing] PredID2: %lu\n", (unsigned long) predId);
 fflush(stdout);
 			nd->ft[0].sInfo.id = predId;
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
@@ -288,9 +314,11 @@ fflush(stdout);
 		nd->ft[0].sInfo.port == nd->ndInfo.port ||
 		nd->predInfo.id == 0)) {
 		
-		// buildSuccessorList();
-		// printSuccList();
-	}	
+		buildSuccessorList();
+		printSuccList();
+		fixFingers();
+	}
+printf("Stablizing end\n");
 }
 
 /**
@@ -307,6 +335,7 @@ int cmpfunc(const void* a, const void* b) {
  * Build the successor list
  */
 void buildSuccessorList() {
+printf("buildSuccessorList Starting..\n");
 	int i = 0;
 	for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
 		nd->sList[i].info.id = 0;
@@ -334,8 +363,19 @@ void buildSuccessorList() {
 
 	i = 1;
 	while (nd->ndInfo.id != sId) {
+printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, 
+	sIpAddr, (unsigned long) sPort);
+		ssId = 0; memset(ssIpAddr,0,15); ssPort = 0;
 		int n = askSuccForSucc(sId, sIpAddr, sPort, &ssId, ssIpAddr, &ssPort);
-		if (n < 0) return;
+		if (n < 0) { //connection fail or can't find
+			sId = nd->sList[i-1].info.id;
+			sPort = nd->sList[i-1].info.port;
+			strcpy(sIpAddr, nd->sList[i-1].info.ipAddr);
+printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, 
+	sIpAddr, (unsigned long) sPort);
+			usleep(100 * 1000);
+			continue;
+		}
 		
 		//successor
 		nd->sList[i].info.id = sId;
@@ -347,10 +387,11 @@ void buildSuccessorList() {
 		nd->sList[i].sInfo.port = ssPort;
 		strcpy(nd->sList[i++].sInfo.ipAddr, ssIpAddr);
 
-		sId = ssId; 
+		sId = ssId;
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
 	}
+printf("buildSuccessorList Ending..\n");
 }
 
 void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
@@ -376,6 +417,8 @@ int askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr,
 	n = recvKeyResPkt(keys, num);
 	if (n < 0) return n;
 
+	return 0; //success
+
 }
 
 int askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
@@ -384,6 +427,8 @@ int askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
 	if (n < 0) return n;
 	n = recvResPkt(sId, ssId, ssIpAddr, ssPort);
 	if (n < 0) return n;
+
+	return 0; //success
 }
 
 /**
@@ -403,6 +448,8 @@ int askSuccForPred(uint32_t sId, char* sIpAddr, uint16_t sPort,
 	if (n < 0) return n;
 	n = recvResPkt(sId, predId, predIpAddr, predPort);
 	if (n < 0) return n;
+
+	return 0; //success
 }
 
 /**
@@ -419,7 +466,7 @@ void notify(struct NodeInfo pNodeInfo) {
 	uint32_t pid = nd->predInfo.id;
 
 	if ((pid == 0) || nd->ndInfo.id == pNodeInfo.id) {
-printf("Notify: %lu ID: %lu", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
+printf("[Notify] targetId: %lu myID: %lu\n", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
 		sendNotifyPkt(sId, sIpAddr, sPort, 
 						nd->ndInfo.id, nd->ndInfo.ipAddr, nd->ndInfo.port);
 	}
@@ -430,7 +477,10 @@ printf("Notify: %lu ID: %lu", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
  * Fix the finger table
  */
 void fixFingers() {
+printf("FixFingers Starts\n");
 
+/* OLD VERSION: retrieving via tcp sockets*/
+#if 1
 	int i = 0;
 	uint32_t sId = 0;
 	uint16_t sPort = 0;
@@ -439,7 +489,8 @@ void fixFingers() {
 
 	for (i = 1; i < nd->ftSize; ++i) {
 		targetId = nd->ft[i].start;
-		if (targetId <= nd->ft[i-1].sInfo.id) {
+		if ((targetId <= nd->ft[i-1].sInfo.id)
+				|| nd->ft[i-1].sInfo.id == 1){
 			nd->ft[i].sInfo.id = nd->ft[i-1].sInfo.id;
 			strcpy(nd->ft[i].sInfo.ipAddr, nd->ft[i-1].sInfo.ipAddr);
 			nd->ft[i].sInfo.port = nd->ft[i-1].sInfo.port;
@@ -457,7 +508,31 @@ void fixFingers() {
 			}
 		}
 	}
-	// printFT();
+#endif
+
+#if 0
+	int i, j = 0;
+	uint32_t targetId = 0;
+	
+	for (i = 1; i < nd->ftSize; ++i) {
+		targetId = nd->ft[i].start;
+		for (j = 0; (int)pow(2, FT_SIZE); ++j) {
+			if ((nd->sList[j].sInfo.id != 0) 
+					&& (targetId <= nd->sList[j].sInfo.id)) {
+				nd->ft[i].sInfo.id = nd->sList[j].sInfo.id;
+				strcpy(nd->ft[i].sInfo.ipAddr, "127.0.0.1");
+				nd->ft[i].sInfo.port = nd->sList[j].sInfo.port;
+				break;
+			}
+		}
+		//when its next successor is the first (default) node 
+		nd->ft[i].sInfo.id = DEFAULT_NODE_ID;
+		strcpy(nd->ft[i].sInfo.ipAddr, "127.0.0.1");
+		nd->ft[i].sInfo.port = DEFAULT_PORT+DEFAULT_NODE_ID;
+	}
+#endif
+	printFT();
+printf("FixFingers Ends\n");
 }
 
 /**
@@ -488,7 +563,7 @@ void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
  * @param keys [description]
  * @param num  The number of the returned keys 
  */
-void getKeys(uint32_t id, int keys[], int* num) {
+void getKeys(uint32_t id, uint32_t keys[], int* num) {
 	// pthread_mutex_lock(&lock);
 	int i = 0; int j = 0;
 	int size = nd->keySize;
@@ -556,10 +631,14 @@ void printFT() {
 
 void printSuccList() {
 	int i = 0;
-	for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
-		printf("ID: %lu -> SID: %lu \n", 
-			(unsigned long)nd->sList[i].info.id,
-			(unsigned long)nd->sList[i].sInfo.id);
+	// for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
+	for (i = 0; i < 100; ++i) {
+		// printf("ID: %lu -> SID: %lu \n", 
+		// 	(unsigned long)nd->sList[i].info.id,
+		// 	(unsigned long)nd->sList[i].sInfo.id);
+
+		printf("%lu ", (unsigned long)nd->sList[i].sInfo.id);
 		 
 	}
+	printf("\n");
 }
