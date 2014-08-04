@@ -69,7 +69,7 @@ void printMenu() {
 
 		switch (c) {
 		case 1:
-			printf("Input number: \n");
+			printf("Input number: ");
 			int tmp = 0;
 			scanf("%d", &tmp);
 			uint32_t id = (uint32_t)tmp;
@@ -225,7 +225,9 @@ int connectToServer(char* ipAddr, uint16_t port) {
 	memset(&servAdrCli, 0, sizeof(servAdrCli));
 	
 	if((connfdCli = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+#if debug
 		printf("openning socket error occured\n");
+#endif
 		return -1;
 
 	}
@@ -233,13 +235,16 @@ int connectToServer(char* ipAddr, uint16_t port) {
 	servAdrCli.sin_port = htons(port);
 
 	if(inet_pton(AF_INET, ipAddr, &servAdrCli.sin_addr) < 0) {
+#if debug
 		printf("converting %s from a string error occured\n", ipAddr);
+#endif
 		return -1;
 	}
 
 	if(connect(connfdCli, (struct sockaddr*)&servAdrCli, sizeof(servAdrCli))<0){
-		printf("%d %s Connection failed %s: %lu, %s\n", __LINE__, __FILE__, 
-			ipAddr, (unsigned long) port, strerror(errno));
+#if debug
+		printf("%d %s Connection failed %s: %lu, %s\n", __LINE__, __FILE__, ipAddr, (unsigned long) port, strerror(errno));
+#endif
 		return -1;
 	}
 	return 0;
@@ -405,7 +410,9 @@ int parse(char buf[], uint32_t* targetId, uint32_t* successorId,
 			char* ipAddr, uint16_t* port) {
 	
 	if ((buf[0] & 0xFF) != 0xC0) {
+#if debug
 		printf("Received packet does NOT have 0xC0\n");
+#endif
 		return -1;
 	}
 
@@ -433,7 +440,9 @@ int parse(char buf[], uint32_t* targetId, uint32_t* successorId,
  */
 int parseForKeyResPkt(char* buf, uint32_t keys[], int* num) {
 	if ((buf[0] & 0xFF) != 0xC0) {
+#if debug
 		printf("Received packet does NOT have 0xC0\n");
+#endif
 		return -1;
 	}
 
@@ -545,7 +554,9 @@ int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort,
 					uint32_t id, char* ipAddr, uint16_t port) {
 	int n = connectToServer(sIpAddr, sPort);
 	if (n < 0) {
+#if debug
 		printf("Connection to %s, %lu failed\n", sIpAddr, (unsigned long)sPort);
+#endif
 		closeSocket(connfdCli);
 		return -1;
 		// abort();

@@ -4,8 +4,9 @@ import subprocess
 import os
 import psutil
 import signal
+import copy
 
-finTime = 30
+finTime = 15
 failProcs = [] # a list of failure processes 
 numNodes = 100
 # failTime = 
@@ -23,6 +24,11 @@ if not os.path.exists(directory):
 	os.makedirs(directory)
 
 os.popen('rm -f ./output/*')
+
+tmpNode = copy.deepcopy(nodes)
+tmpNode.sort()
+print "Nodes: "
+print tmpNode
 
 ''' Running the first node '''
 fNdOutput = open(directory + '/' + str(firstNode) + '.out', 'w')

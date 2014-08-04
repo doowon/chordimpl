@@ -199,7 +199,9 @@ void join() {
 printf("[Join] Found SID %lu, PID %lu \n",(unsigned long)sId, (unsigned long)predId);
 #endif 
 			if (n < 0) {
+#if debug
 				printf("Join Failed");
+#endif
 				return;
 			} else if (predId > nd->ndInfo.id) {
 				usleep(500 * 1000);
