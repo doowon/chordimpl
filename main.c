@@ -12,15 +12,6 @@ int main(int argc, char *argv[]) {
 	// printf("%s\n", mdString);
 	// free(mdString);
 
-	// if (argc != 3) {
-	// 	printf("Usage: chord nodeId finishTime\n");
-	// 	return -1;
-	// }
-
-	// if (argc != 2) {
-	// 	printf("Usage: chord nodeId\n");
-	// 	return -1;
-	// }
 	if (argc > 3 && argc < 2) {
 		printf("Usage: chord -n nodeid -f -i\n");
 		return -1;
@@ -51,11 +42,12 @@ int main(int argc, char *argv[]) {
 	
 	if (nodeId > 0){
 		if (failure && !interactive) {
-			initNode(nodeId, fTime);
+			initNode(nodeId, fTime, false);
 		} else if (!failure && !interactive) {
-			initNode(nodeId, 0);
+			initNode(nodeId, 0, false);
 		} else if (!failure && interactive) {
 			printf("interative\n");
+			initNode(nodeId, 0, true);
 		}
 	}
 

@@ -7,7 +7,7 @@ import signal
 
 finTime = 30
 failProcs = [] # a list of failure processes 
-numNodes = 100
+numNodes = 10
 # failTime = 
 failNumNodes = int(numNodes * 0.1)
 kbits = 9

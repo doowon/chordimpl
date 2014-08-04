@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <inttypes.h>
+#include <time.h>
 
 typedef int bool;
 #define true 1
@@ -23,9 +24,9 @@ typedef int bool;
 
 Node* nd;
 extern pthread_mutex_t lock;			/// pthrea lock
+extern bool debug;
 
-int print;
-
+void printMenu();
 int initChord(uint32_t nodeId);
 int findSuccessor(uint32_t targetId, uint32_t* successorId, 
 						char* ipAddr, uint16_t* port);

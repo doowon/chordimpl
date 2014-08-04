@@ -27,7 +27,13 @@
 #define NUM_KEYS 1024
 #define SLIST_SIZE 1024
 
-#define DEBUG 0
+#define BUF_SIZE 16
+
+typedef int bool;
+#define true 1
+#define false 0
+
+int debug;
 
 struct _Node;
 typedef struct _Node Node;
@@ -71,21 +77,21 @@ char recvBufCli[16];			/// recv buffer for client
 pthread_t tid[2];				/// pthread (server, client, stablizing)
 pthread_mutex_t lock;			/// pthrea lock
 
-int initNode(uint32_t nodeId, unsigned int fTime);
+int initNode(uint32_t nodeId, unsigned int fTime, bool menu);
 void pthreadJoin();
 void initServerSocket();
 int listenServerSocket();
 int connectToServer(char* ipAddr, uint16_t port);
 int checkConnection(char* ipAddr, uint16_t port);
 int readFromSocket(int fd, char* buf);
-int writeToSocket(int fd, char* buf);
+int writeToSocket(int fd, char* buf, unsigned int size);
 void loopStablize();
 int closeSocket(int socketfd);
 void createReqPkt(char* buf, uint32_t targetId, uint32_t successorId, 
 					char* ipAddr, uint16_t port, int res);
 void createResPkt(char* buf, uint32_t targetId, uint32_t successorId, 
 					char* ipAddr, uint16_t port, int res);
-void createKeyResPkt(char* buf, uint32_t keys[], int num);
+void createKeyResPkt(char* buf, unsigned int size, uint32_t keys[], int num);
 int parse(char* buf, uint32_t* targetId, uint32_t* successorId, 
 					char* ipAddr, uint16_t* port);
 int parseForKeyResPkt(char* buf, uint32_t keys[], int* num);
