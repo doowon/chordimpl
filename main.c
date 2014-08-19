@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
 		} else if (!failure && !interactive) {
 			initNode(nodeId, 0, false);
 		} else if (!failure && interactive) {
-			printf("interative\n");
+			printf("Interative Mode\n");
 			initNode(nodeId, 0, true);
 		}
 	}

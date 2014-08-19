@@ -33,8 +33,6 @@ typedef int bool;
 #define true 1
 #define false 0
 
-int debug;
-
 struct _Node;
 typedef struct _Node Node;
 
@@ -83,26 +81,21 @@ void initServerSocket();
 int listenServerSocket();
 int connectToServer(char* ipAddr, uint16_t port);
 int checkConnection(char* ipAddr, uint16_t port);
-int readFromSocket(int fd, char* buf);
+int readFromSocket(int fd, char* buf, unsigned int size);
 int writeToSocket(int fd, char* buf, unsigned int size);
 void loopStablize();
 int closeSocket(int socketfd);
-void createReqPkt(char* buf, uint32_t targetId, uint32_t successorId, 
-					char* ipAddr, uint16_t port, int res);
-void createResPkt(char* buf, uint32_t targetId, uint32_t successorId, 
-					char* ipAddr, uint16_t port, int res);
-void createKeyResPkt(char* buf, unsigned int size, uint32_t keys[], int num);
-int parse(char* buf, uint32_t* targetId, uint32_t* successorId, 
-					char* ipAddr, uint16_t* port);
-int parseForKeyResPkt(char* buf, uint32_t keys[], int* num);
-int sendReqPkt(uint32_t targetId, uint32_t successorId, 
-						char* ipAddr, uint16_t port);
-int recvResPkt(uint32_t targetId, uint32_t* successorId, 
-						char* ipAddr, uint16_t* port);
-int recvKeyResPkt(uint32_t keys[], int* num);
+void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port, int res);
+void createResPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port, int res);
+void createKeyTransPkt(char* buf, unsigned int size, uint32_t keys[], int keySize, int type);
+int parse(char* buf, uint32_t* targetId, uint32_t* sId, char* ipAddr, uint16_t* port);
+// int parseForKeyResPkt(char* buf, uint32_t keys[], int* num);
+int sendReqPkt(uint32_t targetId, uint32_t sId, char* sIpAddr, uint16_t sPort);
+int recvResPkt(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPort);
+int recvKeyTransPkt(uint32_t keys[], int* num);
 int sendAskSuccForPredPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
 int sendAskSuccForSuccPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
 int sendAskSuccForKeyPkt(uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort);
-int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort,
-					uint32_t id, char* ipAddr, uint16_t port);
+int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort, uint32_t id, char* ipAddr, uint16_t port);
+int sendKeyTransPkt(uint32_t sId, char* sIpAddr, uint16_t sPort, uint32_t keys[], int keySize);
 #endif

@@ -24,7 +24,6 @@ typedef int bool;
 
 Node* nd;
 extern pthread_mutex_t lock;			/// pthrea lock
-extern bool debug;
 
 void printMenu();
 int initChord(uint32_t nodeId);
@@ -40,15 +39,17 @@ int askSuccForPred(uint32_t sId, char* sIpAddr, uint16_t sPort,
 int askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
 					uint32_t* ssId, char* ssIpAddr, uint16_t* ssPort);
 int askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr, 
-					uint16_t sPort, uint32_t keys[], int *num);
+					uint16_t sPort, uint32_t keys[], int *keySize);
 void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port);
 void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port);
-void getKeys(uint32_t id, uint32_t keys[], int* num);
+void getKeys(uint32_t id, uint32_t keys[], int* keySize);
 void stabilize();
 void notify(struct NodeInfo pNodeInf);
 void buildSuccessorList();
 void fixFingers();
 void modifyPred(uint32_t id, char* ipAddr, uint16_t port);
+int transferKeys(uint32_t id, char* ipAddr, uint16_t port, uint32_t keys[], int keySize);
+void setKeys(uint32_t keys[], int keySize);
 
 void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst);
 int cmpfunc(const void* a, const void* b);

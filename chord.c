@@ -9,7 +9,7 @@
 
 /**
  * Initialize Chord
- * @param  nodeId     Node ID
+ * @param  nodeId     Node ID to be assigned 
  * @return            [description]
  */
 int initChord(uint32_t nodeId) {
@@ -34,8 +34,8 @@ int initChord(uint32_t nodeId) {
 	srand(time(NULL));
 	if (nodeId == 1) {
 		printf("Keys:");
-		for (i = 0; i < 10; i++) {
-			nd->key[i] = rand() % NUM_KEYS;
+		for (i = 0; i < 20; i++) {
+			nd->key[i] = rand() % 100;
 			nd->keySize++;
 			printf(" %lu", (unsigned long) nd->key[i]);
 		}
@@ -58,7 +58,7 @@ int initChord(uint32_t nodeId) {
 		nd->ftSize++;
 	}
 
-	//intialize successor list
+	//intialize successor list (make them zero) 
 	for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
 		nd->sList[i].info.id = 0;
 		nd->sList[i].info.port = 0; //port 0 means a initial value
@@ -72,18 +72,17 @@ int initChord(uint32_t nodeId) {
 
 
 /**
- * [findSuccessor description]
- * @param  targetId    [description]
- * @param  successorId [description]
- * @param  ipAddr      [description]
- * @param  port        [description]
- * @return             
+ * Find the successor of target ID and return the successor ID, IP, and port
+ * @param  targetId To be looked for
+ * @param  sId      Successor ID of the targetID
+ * @param  sipAddr  Successor IP of the targetID
+ * @param  sPort    Successor Port of the targetID
+ * @return          -1 if error, 2 if found, and 0 if not found
  */
-int findSuccessor(uint32_t targetId, uint32_t* successorId, 
-						char* ipAddr, uint16_t* port) {
+int findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPort) {
 	
 	//look for id in LOCAL
-	int n = closestPrecedingFinger(targetId, successorId, ipAddr, port);
+	int n = closestPrecedingFinger(targetId, sId, sIpAddr, sPort);
 	if (n == 2) { // no need to request more
 		return 2;
 	} else if (n < 0) {
@@ -92,9 +91,9 @@ int findSuccessor(uint32_t targetId, uint32_t* successorId,
 
 	// Look for targetId in remote
 	while (1) {
-		sendReqPkt(targetId, *successorId, ipAddr, *port);
+		sendReqPkt(targetId, *sId, sIpAddr, *sPort);
 		uint32_t recvTargetId = 0;
-		n = recvResPkt(recvTargetId, successorId, ipAddr, port);
+		n = recvResPkt(recvTargetId, sId, sIpAddr, sPort);
 		if (n == 2) {
 			return 2;
 		} else if (n < 0) {
@@ -107,22 +106,22 @@ int findSuccessor(uint32_t targetId, uint32_t* successorId,
 
 /**
  * Find the successor without looking for the local finger table
- * @param  targetId    [description]
- * @param  successorId [description]
- * @param  ipAddr      [description]
- * @param  port        [description]
- * @return             [description]
+ * @param  targetId To be looked for
+ * @param  sId      Successor ID of the targetID
+ * @param  sipAddr  Successor IP of the targetID
+ * @param  sPort    Successor Port of the targetID
+ * @return          -1 if error, 2 if found, 0 if not found
  */
-int findInitSuccessor(uint32_t targetId, uint32_t* successorId,
-						char* ipAddr, uint16_t* port) {
+int findInitSuccessor(uint32_t targetId, uint32_t* sId,
+						char* sIpAddr, uint16_t* sPort) {
 	while (1) {
-		int n = sendReqPkt(targetId, *successorId, ipAddr, *port);
+		int n = sendReqPkt(targetId, *sId, sIpAddr, *sPort);
 		if (n == -1) {
 			return -1;
 		}
 		
 		uint32_t recvTargetId = 0;
-		n = recvResPkt(recvTargetId, successorId, ipAddr, port);
+		n = recvResPkt(recvTargetId, sId, sIpAddr, sPort);
 		if (n == 2) {
 			return 2;
 		}
@@ -195,11 +194,11 @@ void join() {
 		if (n == 2) {
 			n = askSuccForPred(sId, ipAddr, port, 
 								&predId, predIpAddr, &predPort);
-#if debug
+#if DEBUG
 printf("[Join] Found SID %lu, PID %lu \n",(unsigned long)sId, (unsigned long)predId);
 #endif 
 			if (n < 0) {
-#if debug
+#if DEBUG
 				printf("Join Failed");
 #endif
 				return;
@@ -225,11 +224,31 @@ printf("[Join] Found SID %lu, PID %lu \n",(unsigned long)sId, (unsigned long)pre
 	}
 }
 
+void leave() {
+	uint32_t sId = nd->ft[0].sInfo.id;
+	char sIpAddr[15];
+	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
+	uint16_t sPort = nd->ft[0].sInfo.port;
+	
+	//transfer keys to the successor
+	int i = 1;
+	while (transferKeys(sId, sIpAddr, sPort, nd->key, nd->keySize) < 0) {
+		sId = nd->ft[i].sInfo.id;
+		strcpy(sIpAddr, nd->ft[i].sInfo.ipAddr);
+		sPort = nd->ft[i++].sInfo.port;
+		if (i >= nd->ftSize) {
+			abort(); //it has no successors 
+		}
+	}
+
+	//notify the successor of the predecessor 
+}
+
 /**
- * Stablize its node
+ * Stablize the node
  */
 void stabilize() {
-#if debug
+#if DEBUG
 printf("Stablizing start\n");
 #endif
 	uint32_t sId = nd->ft[0].sInfo.id;
@@ -243,12 +262,12 @@ printf("Stablizing start\n");
 	}
 
 	// To check to see if the successor fails
-#if debug
+#if DEBUG
 	printf("check connection\n");
 #endif
 	n = checkConnection(sIpAddr, sPort);
 	if (n < 0) {
-#if debug
+#if DEBUG
 		printf("Connection Failed\n");
 #endif
 		int i = 0;
@@ -274,18 +293,18 @@ printf("Stablizing start\n");
 	
 	n = askSuccForPred(sId, sIpAddr, sPort, &predId, predIpAddr, &predPort);
 	if (n < 0) {
-#if debug
+#if DEBUG
 printf("askSuccForPred error\n");
 #endif
 		return;
 	}
-#if debug
+#if DEBUG
 printf("[Stabilzing] PredID1: %lu SID: %lu\n", (unsigned long) predId, (unsigned long) sId);
 #endif
 	if (nd->ndInfo.id != predId) {
 		//this node is not just joining & connect
 		if (nd->predInfo.port != 0 && checkConnection(predIpAddr,predPort)>=0){ 
-#if debug
+#if DEBUG
 printf("[Stabilzing] PredID2: %lu\n", (unsigned long) predId);
 #endif
 			nd->ft[0].sInfo.id = predId;
@@ -299,37 +318,42 @@ printf("[Stabilzing] PredID2: %lu\n", (unsigned long) predId);
 		// ask the successor's keys
 		uint32_t id = nd->ndInfo.id;
 		uint32_t keys[NUM_KEYS];
-		int num = 0;
+		int keySize = 0;
 
 		if (sId != nd->ndInfo.id) {
-			n = askSuccForKeys(id, sId, sIpAddr, sPort, keys, &num);
+			n = askSuccForKeys(id, sId, sIpAddr, sPort, keys, &keySize);
 			int i = 0;
 			int size = nd->keySize;
-			for (i = 0; i < num; ++i) {
+			for (i = 0; i < keySize; ++i) {
 				nd->key[size++] = keys[i];
 			}
-			nd->keySize += num;
+			nd->keySize += keySize;
 		}
 		// sort key array
 		qsort(nd->key, nd->keySize, sizeof(int), cmpfunc);
 	}
-#if debug
+
+#if DEBUG
 	printDebug();
 #endif
+	
 	if (!(nd->ft[0].sInfo.id == 0 || nd->ft[0].sInfo.port == 0 ||
-		nd->ft[0].sInfo.id == nd->ndInfo.id ||
-		nd->ft[0].sInfo.port == nd->ndInfo.port ||
-		nd->predInfo.id == 0)) {
+			nd->ft[0].sInfo.id == nd->ndInfo.id ||
+			nd->ft[0].sInfo.port == nd->ndInfo.port || nd->predInfo.id == 0)) {
 		
 		buildSuccessorList();
-#if debug
+
+#if DEBUG
 		printSuccList();
 #endif
+
 		fixFingers();
 	}
-#if debug
+
+#if DEBUG
 printf("Stablizing end\n");
 #endif
+
 }
 
 /**
@@ -346,7 +370,7 @@ int cmpfunc(const void* a, const void* b) {
  * Build the successor list
  */
 void buildSuccessorList() {
-#if debug
+#if DEBUG
 printf("buildSuccessorList Starting..\n");
 #endif
 	int i = 0;
@@ -377,7 +401,7 @@ printf("buildSuccessorList Starting..\n");
 	i = 1;
 	while (nd->ndInfo.id != sId) {
 
-#if debug
+#if DEBUG
 printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (unsigned long) sPort);
 #endif
 		ssId = 0; memset(ssIpAddr,0,15); ssPort = 0;
@@ -387,7 +411,7 @@ printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (
 			sPort = nd->sList[i-1].info.port;
 			strcpy(sIpAddr, nd->sList[i-1].info.ipAddr);
 
-#if debug
+#if DEBUG
 printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (unsigned long) sPort);
 #endif
 			usleep(100 * 1000);
@@ -409,11 +433,16 @@ printf("%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (
 		sPort = ssPort;
 	}
 
-#if debug
+#if DEBUG
 printf("buildSuccessorList Ending..\n");
 #endif
 }
 
+/**
+ * A help function to copy the structure NodeInfo
+ * @param src [description]
+ * @param dst [description]
+ */
 void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
 	dst->id = src->id;
 	dst->port = src->port;
@@ -427,20 +456,30 @@ void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
  * @param  sIpAddr [description]
  * @param  sPort   [description]
  * @param  keys    the keys returned
- * @param  num     the number of keys returned
+ * @param  keySize     the number of keys returned
  * @return         [description]
  */
 int askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr, 
-					uint16_t sPort, uint32_t keys[], int* num) {
+					uint16_t sPort, uint32_t keys[], int* keySize) {
 	int n = sendAskSuccForKeyPkt(id, sId, sIpAddr, sPort);
 	if (n < 0) return n;
-	n = recvKeyResPkt(keys, num);
+	n = recvKeyTransPkt(keys, keySize);
 	if (n < 0) return n;
 
 	return 0; //success
 
 }
 
+/**
+ * Ask the successor for the successor's successor
+ * @param  sId      [description]
+ * @param  sIpAddr  [description]
+ * @param  sPort    [description]
+ * @param  ssId     [description]
+ * @param  ssIpAddr [description]
+ * @param  ssPort   [description]
+ * @return          [description]
+ */
 int askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
 					uint32_t* ssId, char* ssIpAddr, uint16_t* ssPort) {
 	int n = sendAskSuccForSuccPkt(sId, sIpAddr, sPort);
@@ -485,7 +524,7 @@ void notify(struct NodeInfo pNodeInfo) {
 	uint32_t pid = nd->predInfo.id;
 
 	if ((pid == 0) || nd->ndInfo.id == pNodeInfo.id) {
-#if debug
+#if DEBUG
 printf("[Notify] targetId: %lu myID: %lu\n", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
 #endif
 		sendNotifyPkt(sId, sIpAddr, sPort, 
@@ -498,7 +537,7 @@ printf("[Notify] targetId: %lu myID: %lu\n", (unsigned long)sId, (unsigned long)
  * Fix the finger table
  */
 void fixFingers() {
-#if debug
+#if DEBUG
 printf("FixFingers Starts\n");
 #endif
 
@@ -555,7 +594,7 @@ printf("FixFingers Starts\n");
 		nd->ft[i].sInfo.port = DEFAULT_PORT+DEFAULT_NODE_ID;
 	}
 #endif
-#if debug
+#if DEBUG
 	printFT();
 printf("FixFingers Ends\n");
 #endif
@@ -573,6 +612,12 @@ void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port) {
 	*port = nd->predInfo.port;
 }
 
+/**
+ * Get the successor
+ * @param id     [description]
+ * @param ipAddr [description]
+ * @param port   [description]
+ */
 void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
 	*id = nd->ft[0].sInfo.id;
 	strcpy(ipAddr, nd->ft[0].sInfo.ipAddr);
@@ -597,15 +642,47 @@ void getKeys(uint32_t id, uint32_t keys[], int* num) {
 		return;
 	}
 
+	/* TODO: 
+	* Make it sure that the keys transferred
+	* because keys are removed here, but not transfer to predecessor
+	*/
 	// remove keys from list
-	// TODO: Make it sure that the keys transferred
-	// because keys are removed here, but not transfer to predecessor
 	int k = 0;
 	for (i = j; i < size; ++i) {
 		nd->key[k++] = nd->key[i];
 	} 
+	
 	nd->keySize = size - j;
 	*num = j;
+}
+
+/**
+ * Transfer all keys to another node
+ * @param id     Node ID
+ * @param ipAddr Node IP Addr
+ * @param port   Node Port
+ * @param keys   Keys to be transferred
+ * @param num    The number of keys
+ * @return       if less than 0, fail. If 0, successful
+ */
+int transferKeys(uint32_t id, char* ipAddr, uint16_t port, uint32_t keys[], int keySize) {
+	return sendKeyTransPkt(id, ipAddr, port, keys, keySize);
+}
+
+/**
+ * Set keys being transfered by a node leaving
+ * @param keys    Keys
+ * @param keySize The size of keys
+ */
+void setKeys(uint32_t keys[], int keySize) {
+	int i = 0;
+	int size = nd->keySize;
+	for (i = 0; i < keySize; ++i) {
+		nd->key[size++] = keys[i];
+	}
+	nd->keySize += keySize;
+	// sort key array
+	qsort(nd->key, nd->keySize, sizeof(int), cmpfunc);
 }
 
 /**
@@ -619,9 +696,11 @@ pthread_mutex_lock(&lock);
 	nd->predInfo.id = id;
 	nd->predInfo.port = port;
 	strcpy(nd->predInfo.ipAddr, ipAddr);
-#if debug
+
+#if DEBUG
 printf("ModifyPred: %lu\n", (unsigned long) id);
 #endif
+
 pthread_mutex_unlock(&lock);
 }
 
