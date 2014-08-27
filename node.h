@@ -7,6 +7,7 @@
 #ifndef NODE_H
 #define NODE_H
 
+#include "packetType.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -60,42 +61,37 @@ struct _Node{
 	struct Successor sList[SLIST_SIZE];  /// successor list
 };
 
-int listenfd; 					/// socket for listener(server)
-int connfd; 					/// socket for listener
-int connfdCli; 					/// socket for client
+int connfdUDP;
+int connfdTCP;
 
-struct sockaddr_in servAdr; 	/// server address
-struct sockaddr_in servAdrCli; 	/// server address for client
-
-char sendBufServ[16];			/// send buffer for server
-char recvBufServ[16];			/// recv buffer for server (8byte)
-
-char recvBufCli[16];			/// recv buffer for client
-
-pthread_t tid[2];				/// pthread (server, client, stablizing)
+pthread_t tid[3];				/// pthread (server, client, stablizing)
 pthread_mutex_t lock;			/// pthrea lock
 
 int initNode(uint32_t nodeId, unsigned int fTime, bool menu);
-void pthreadJoin();
-void initServerSocket();
-int listenServerSocket();
-int connectToServer(char* ipAddr, uint16_t port);
-int checkConnection(char* ipAddr, uint16_t port);
-int readFromSocket(int fd, char* buf, unsigned int size);
-int writeToSocket(int fd, char* buf, unsigned int size);
+void initServerSocket(uint16_t port);
+void listenServerTCPSocket();
+void listenServerUDPSocket();
 void loopStablize();
-int closeSocket(int socketfd);
-void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port, int res);
-void createResPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port, int res);
-void createKeyTransPkt(char* buf, unsigned int size, uint32_t keys[], int keySize, int type);
-int parse(char* buf, uint32_t* targetId, uint32_t* sId, char* ipAddr, uint16_t* port);
-// int parseForKeyResPkt(char* buf, uint32_t keys[], int* num);
-int sendReqPkt(uint32_t targetId, uint32_t sId, char* sIpAddr, uint16_t sPort);
-int recvResPkt(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPort);
-int recvKeyTransPkt(uint32_t keys[], int* num);
-int sendAskSuccForPredPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
-int sendAskSuccForSuccPkt(uint32_t sId, char* sIpAddr, uint16_t sPort);
-int sendAskSuccForKeyPkt(uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort);
-int sendNotifyPkt(uint32_t sId, char* sIpAddr, uint16_t sPort, uint32_t id, char* ipAddr, uint16_t port);
-int sendKeyTransPkt(uint32_t sId, char* sIpAddr, uint16_t sPort, uint32_t keys[], int keySize);
+
+void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, 
+					uint16_t port, int pktType);
+void createResPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, 
+					uint16_t port, int pktType);
+void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int type);
+
+int parse(char buf[], uint32_t* targetId, uint32_t* sId, char* ipAddr, 
+			uint16_t* port, uint32_t keys[], int* keySize);
+void sendReqClosestFingerPkt(int sockfd, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port);
+void sendReqSuccForPredPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort);
+void sendReqSuccForSuccPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort);
+void sendNotifyPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort,
+					uint32_t id, char* ipAddr, uint16_t port);
+void sendReqSuccForKeyPkt(int sockfd, uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort);
+void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port);
+int recvResPkt(int sockfd, uint32_t* sId, char* sIpAddr, uint16_t* sPort);
+
+int connectToServer(int* sockfd, char* ipAddr, uint16_t port);
+int readFromSocket(int sockfd, char* buf, unsigned int size);
+int writeToSocket(int sockfd, char* buf, unsigned int size);
+void printMenu();
 #endif
