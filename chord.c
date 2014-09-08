@@ -6,13 +6,14 @@
 
 #include "chord.h"
 #include "node.h"
+#include "util.h"
 
 /**
  * Initialize Chord
- * @param  nodeId     Node ID to be assigned 
+* @param  nodeId     Node ID to be assigned 
  * @return            [description]
  */
-int initChord(uint32_t nodeId) {
+void initChord(char* data, int dataSize, uint16_t port) {
 
 	if (pthread_mutex_init(&lock, NULL) != 0) {
 		printf("mutex init failed\n");
@@ -20,14 +21,17 @@ int initChord(uint32_t nodeId) {
 	}
 
 	nd = malloc(sizeof(Node));
-	nd->ndInfo.id = nodeId;
+	hashSHA1(data, nd->ndInfo.id);
+	memcpy(nd->keyData[0].key, nd->ndInfo.id, SHA_DIGEST_LENGTH);
+	memcpy(nd->keyData[0].data, data, dataSize);
 	strcpy(nd->ndInfo.ipAddr, DEFAULT_IP_ADDR);
-	nd->ndInfo.port = DEFAULT_PORT + nodeId;
+	nd->ndInfo.port = port;
 	nd->keySize = 0;		//initialize the number of keys
-	nd->predInfo.id = 0;  	//init predecessor id 
+	memset(nd->predInfo.id, 0, SHA_DIGEST_LENGTH); //init predecessor id 
 	nd->predInfo.port = 0;  //init predecessor port
 
 	int i = 0;
+
 #if 0	
 	// these three lines are for test,
 	// TODO: keys should be given by parameters
@@ -46,30 +50,24 @@ int initChord(uint32_t nodeId) {
 
 	//init the finger table
 	for (i = 0; i < FT_SIZE; ++i) {
-		int p = (int)pow(2, i);
-		if ((nd->ndInfo.id + p) >= (int)pow(2,FT_SIZE))
-			break;
-		nd->ft[i].start = (nd->ndInfo.id + p) % (int)pow(2,FT_SIZE);
-		nd->ft[i].sInfo.id = 0;
-		nd->ft[i].sInfo.port = 0;
-		if (i == 0) {
-			nd->ft[i].sInfo.id = nd->ndInfo.id;
-			nd->ft[i].sInfo.port = DEFAULT_PORT + nodeId;
-		}
+		unsigned char value[SHA_DIGEST_LENGTH];
+		memset(value, 0, SHA_DIGEST_LENGTH);
+		power2(i, value);
+		addValueToHash(nd->ndInfo.id, value, nd->ft[i].start);
+		// nd->ft[i].sInfo.port = 0;
+		// if (i == 0) {
+			memcpy(nd->ft[i].sInfo.id, nd->ndInfo.id, SHA_DIGEST_LENGTH);
+			nd->ft[i].sInfo.port = port;
+		// }
 		strcpy(nd->ft[i].sInfo.ipAddr, nd->ndInfo.ipAddr);
 		nd->ftSize++;
 	}
 
 	//intialize successor list (make them zero) 
-	for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
-		nd->sList[i].info.id = 0;
+	for (i = 0 ; i < SLIST_SIZE; ++i) {
+		// nd->sList[i].info.id = NULL;
 		nd->sList[i].info.port = 0; //port 0 means a initial value
 	}
-	
-	if (nodeId >= 2)
-		join();
-
-	return 0;
 }
 
 
@@ -116,7 +114,8 @@ int findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPo
  * @param  sPort    Successor Port of the targetID
  * @return          true if found, false if not found
  */
-bool findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPort) {
+bool findSuccessor(unsigned char* targetId, unsigned char* sId, char* sIpAddr, 
+					uint16_t* sPort) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == -1) {
 		fprintf(stderr, "Socket opening error\n");
@@ -125,7 +124,7 @@ bool findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sP
 	
 	int pktType = 0;
 	while (true) {
-		sendReqClosestFingerPkt(sockfd, targetId, *sId, sIpAddr, *sPort);
+		sendReqClosestFingerPkt(sockfd, targetId, sIpAddr, *sPort);
 		pktType = recvResPkt(sockfd, sId, sIpAddr, sPort);
 		if (pktType == RES_FIND_CLOSEST_FINGER_FOUND) {
 			close(sockfd);
@@ -144,42 +143,81 @@ bool findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sP
  * @param  port        [description]
  * @return             1 if not found, 2 if found
  */
-bool closestPrecedingFinger(uint32_t targetId, uint32_t* sId, char* ipAddr, uint16_t* port) {
-	if (targetId == nd->ndInfo.id)
+bool closestPrecedingFinger(unsigned char* targetId, unsigned char* sId, char* ipAddr, uint16_t* port) {
+	if (cmpHashValue(targetId, nd->ndInfo.id) == 0) {
+		memcpy(sId, nd->ndInfo.id, SHA_DIGEST_LENGTH);
+		strcpy(ipAddr, nd->ndInfo.ipAddr);
+		*port = nd->ndInfo.port;	
+		
 		return true;
+	}
 
 	int i = 0;
-	int ftSize = nd->ftSize;
-	struct NodeInfo sNodeInfo;
-	for (i = ftSize-1; i >= 0; --i) {
-		if (nd->ft[i].sInfo.port != 0 && nd->ft[i].start <= targetId) {
-			sNodeInfo = nd->ft[i].sInfo;
-			*sId = sNodeInfo.id;
-			strcpy(ipAddr, sNodeInfo.ipAddr);
-			*port = sNodeInfo.port;
-			// No successors between targetId 
-			// and the next sucessor
-			if (targetId <= sNodeInfo.id || sNodeInfo.id <= nd->ndInfo.id)
+	for (i = nd->ftSize-1; i > 0; --i) {
+		if (between(nd->ft[i].sInfo.id, nd->ndInfo.id, targetId)) {
+			memcpy(sId, nd->ft[i].sInfo.id, SHA_DIGEST_LENGTH);
+			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
+			*port = nd->ft[i].sInfo.port;
+
+			if (between(targetId, nd->ft[i].start, sId)) {
 				return true;
+			}
+
+			return false;
+		}
+
+/*	
+		if (cmpHashValue(nd->ft[i].start, targetId) <= 0) {
+			memcpy(sId, nd->ft[i].sInfo.id, SHA_DIGEST_LENGTH);
+			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
+			*port = nd->ft[i].sInfo.port;
+			// No successors between targetId and the next sucessor
+			if (cmpHashValue(targetId, nd->ft[i].sInfo.id) <= 0 
+				|| cmpHashValue(nd->ft[i].sInfo.id, nd->ndInfo.id) <= 0) {
+				return true;
+			}
 			
 			return false;
 		}
 	}
-	
-	for (i = ftSize-1; i >= 0; --i) {
+
+	for (i = nd->ftSize-1; i >= 0; --i) {
 		if (nd->ft[i].sInfo.port != 0) {
-			struct NodeInfo ndInfo = nd->ft[i].sInfo;
-			*sId = ndInfo.id;
-			strcpy(ipAddr, ndInfo.ipAddr);
-			*port = ndInfo.port;
+			memcpy(sId, nd->ft[i].sInfo.id, SHA_DIGEST_LENGTH);
+			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
+			*port = nd->ft[i].sInfo.port;
 
 			return false;
 		}
+*/
+	}
+
+	memcpy(sId, nd->ft[0].sInfo.id, SHA_DIGEST_LENGTH);
+	strcpy(ipAddr, nd->ft[0].sInfo.ipAddr);
+	*port = nd->ft[0].sInfo.port;
+
+	return true;
+}
+
+bool between(const unsigned char* id, const unsigned char* start, 
+				const unsigned char* end) {
+
+	unsigned char max[SHA_DIGEST_LENGTH] = {0xff,};
+	unsigned char min[SHA_DIGEST_LENGTH] = {0x00,};
+
+	if (cmpHashValue(start, end) < 0 && cmpHashValue(start, id) <= 0 
+		&& cmpHashValue(id, end) <= 0) {
+		return true;
+	} else if ((cmpHashValue(start, end) > 0) && 
+				((cmpHashValue(start, id) <= 0 && cmpHashValue(id, max) <= 0)
+				|| (cmpHashValue(min, id) <= 0 && cmpHashValue(id, end) <= 0))) {
+		return true;
+	} else if (cmpHashValue(start, end) == 0 && cmpHashValue(id, end) == 0) {
+		return true;
 	}
 
 	return false;
 }
-
 /**
  * Join the network
  * @return [description]
@@ -188,39 +226,44 @@ void join() {
 	while (true) {
 		char ipAddr[IPADDR_SIZE];
 		strcpy(ipAddr, DEFAULT_IP_ADDR);
-		uint32_t sId = DEFAULT_NODE_ID;
-		uint32_t targetId = nd->ndInfo.id; // targetID is itself when join
-		uint16_t port = DEFAULT_PORT + DEFAULT_NODE_ID;
+		unsigned char sId[SHA_DIGEST_LENGTH];
+		memset(sId, 0, SHA_DIGEST_LENGTH); // default is 0
+		unsigned char targetId[SHA_DIGEST_LENGTH];
+		memcpy(targetId, nd->ndInfo.id, SHA_DIGEST_LENGTH); // targetID is itself when join
+		uint16_t port = DEFAULT_PORT;
 
-		uint32_t predId = 0;
+		unsigned char predId[SHA_DIGEST_LENGTH];
 		uint16_t predPort = 0;
 		char predIpAddr[IPADDR_SIZE];
-		
-		if (findSuccessor(targetId, &sId, ipAddr, &port)) {
-			askSuccForPred(sId, ipAddr, port, &predId, predIpAddr, &predPort);
 
-			fprintf(stderr, "[Join] Found SID %lu, PID %lu \n",
-							(unsigned long)sId, (unsigned long)predId);
+		if (findSuccessor(targetId, sId, ipAddr, &port)) {
+			askSuccForPred(sId, ipAddr, port, predId, predIpAddr, &predPort);
+
+			char mdString[SHA_DIGEST_LENGTH*2+1];
+			char mdString2[SHA_DIGEST_LENGTH*2+1];
+			hashToString(sId, mdString);
+			hashToString(predId, mdString2);
+			fprintf(stderr, "[Join] Found SID %s, PID %s \n", mdString, mdString2);
 			
-			if (predId > nd->ndInfo.id) {
-				usleep(500 * 1000);
-				continue;
-			}
+			// if (cmpHashValue(predId, nd->ndInfo.id) > 0) {
+			// 	usleep(500 * 1000);
+			// 	continue;
+			// }
 
-			nd->ft[0].sInfo.id = sId;
+			memcpy(nd->ft[0].sInfo.id, sId, SHA_DIGEST_LENGTH);
 			strcpy(nd->ft[0].sInfo.ipAddr, ipAddr);
 			nd->ft[0].sInfo.port = port;
 
 			int i = 0;
 			for (i = 0; i < nd->ftSize; ++i) {
-				if (nd->ft[i].start <= sId) {
-					nd->ft[i].sInfo.id = sId;
+				if (cmpHashValue(nd->ft[i].start, sId) <= 0) {
+					memcpy(nd->ft[i].sInfo.id, sId, SHA_DIGEST_LENGTH);
 					strcpy(nd->ft[i].sInfo.ipAddr, ipAddr);
 					nd->ft[i].sInfo.port = port;
 				}
 			}
 		}
-		break;
+		return;
 	}
 }
 
@@ -249,48 +292,54 @@ void leave() {
  * Stablize the node
  */
 void stabilize() {
-	uint32_t sId = nd->ft[0].sInfo.id;
+	unsigned char sId[SHA_DIGEST_LENGTH];
+	memcpy(sId, nd->ft[0].sInfo.id, SHA_DIGEST_LENGTH);
 	uint16_t sPort = nd->ft[0].sInfo.port;
 	char sIpAddr[IPADDR_SIZE];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
 	
-	if (sId == 0 || sPort == 0) {
+	unsigned char tmp[SHA_DIGEST_LENGTH];
+	memset(tmp, 0, SHA_DIGEST_LENGTH);
+	if (cmpHashValue(sId, tmp) == 0 || sPort == 0) {
 		return;
 	}
 
 	// To check to see if the successor fails
 	if (!checkAlive(sIpAddr, sPort)) {
 		int i = 0;
-		for (i = 1; i < (int)pow(2, FT_SIZE); ++i) {
-			if (nd->sList[i].sInfo.id <= 0)
+		for (i = 1; i < SLIST_SIZE; ++i) {
+			if (cmpHashValue(nd->sList[i].sInfo.id, tmp) == 0)
 				return;
-			sId = nd->sList[i].sInfo.id;
+			memcpy(sId, nd->sList[i].sInfo.id, SHA_DIGEST_LENGTH);
 			sPort = nd->sList[i].sInfo.port;
 			strcpy(sIpAddr, nd->sList[i].sInfo.ipAddr);
 			if (checkAlive(sIpAddr, sPort))
-				nd->ft[0].sInfo.id = sId;
+				memcpy(nd->ft[0].sInfo.id, sId, SHA_DIGEST_LENGTH);
 				nd->ft[0].sInfo.port = sPort;
 				strcpy(nd->ft[0].sInfo.ipAddr, sIpAddr);
-				// printFT();
 				break;
 		}
 	}
 
 	//ask succesor for its predecessor
-	uint32_t predId = 0;
+	unsigned char predId[SHA_DIGEST_LENGTH];
 	uint16_t predPort = 0;
 	char predIpAddr[15];
 	
-	askSuccForPred(sId, sIpAddr, sPort, &predId, predIpAddr, &predPort);
+	askSuccForPred(sId, sIpAddr, sPort, predId, predIpAddr, &predPort);
 	
-	fprintf(stderr, "[Stabilzing] PredID1: %lu PredPort: %lu SID: %lu\n", (unsigned long) predId, (unsigned long) predPort, (unsigned long) sId);
-	if (nd->ndInfo.id != predId) {
+	char mdString[SHA_DIGEST_LENGTH*2+1];
+	char mdString2[SHA_DIGEST_LENGTH*2+1];
+	hashToString(sId, mdString);
+	hashToString(predId, mdString2);
+	fprintf(stderr, "[Stabilzing] PredID1: %s PredPort: %lu SID: %s\n", mdString2, (unsigned long) predPort, mdString);
+	if (cmpHashValue(nd->ndInfo.id, predId) != 0) {
 		//this node is not just joining & connect
-		if (nd->predInfo.port != 0 && checkAlive(predIpAddr,predPort)){ 
+		if (nd->predInfo.port != 0 && checkAlive(predIpAddr,predPort)) { 
 			
-			fprintf(stderr, "[Stabilzing] PredID2: %lu PredPort: %lu\n", (unsigned long) predId, (unsigned long) predPort);
+			fprintf(stderr, "[Stabilzing] PredID2: %s PredPort: %lu\n", mdString2, (unsigned long) predPort);
 
-			nd->ft[0].sInfo.id = predId;
+			memcpy(nd->ft[0].sInfo.id, predId, SHA_DIGEST_LENGTH);
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
 			nd->ft[0].sInfo.port = predPort;
 		}
@@ -319,26 +368,18 @@ void stabilize() {
 	}
 
 	
-	if (!(nd->ft[0].sInfo.id == 0 || nd->ft[0].sInfo.port == 0 ||
-			nd->ft[0].sInfo.id == nd->ndInfo.id ||
-			nd->ft[0].sInfo.port == nd->ndInfo.port || nd->predInfo.id == 0)) {
+	// if (!((cmpHashValue(nd->ft[0].sInfo.id, tmp) == 0)
+	// 		|| (nd->ft[0].sInfo.port == 0)
+	// 		|| (cmpHashValue(nd->ft[0].sInfo.id, nd->ndInfo.id) == 0)
+	// 		|| (nd->ft[0].sInfo.port == nd->ndInfo.port) 
+	// 		|| (cmpHashValue(nd->predInfo.id, tmp) == 0))) {
 		
-		buildSuccessorList();
-		printSuccList();
+		// buildSuccessorList();
+		// printSuccList();
 		fixFingers();
-	}
+	// }
 
 	printDebug();
-}
-
-/**
- * Compare function for the quicksort
- * @param  a [description]
- * @param  b [description]
- * @return   [description]
- */
-int cmpfunc(const void* a, const void* b) {
-	return (*(int*)a - *(int*)b);
 }
 
 /**
@@ -346,12 +387,12 @@ int cmpfunc(const void* a, const void* b) {
  */
 void buildSuccessorList() {
 	int i = 0;
-	for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
-		nd->sList[i].info.id = 0;
+	for (i = 0 ; i < SLIST_SIZE; ++i) {
+		memset(nd->sList[i].info.id, 0, SHA_DIGEST_LENGTH);
 		nd->sList[i].info.port = 0;
 		memset(nd->sList[i].info.ipAddr, 0, IPADDR_SIZE);
 
-		nd->sList[i].sInfo.id = 0;
+		memset(nd->sList[i].sInfo.id, 0, SHA_DIGEST_LENGTH);
 		nd->sList[i].sInfo.port = 0;
 		memset(nd->sList[i].sInfo.ipAddr, 0, IPADDR_SIZE);
 
@@ -361,56 +402,54 @@ void buildSuccessorList() {
 	cpyNodeInfo(&(nd->ndInfo), &(nd->sList[0].info));
 	cpyNodeInfo(&(nd->ft[0].sInfo), &(nd->sList[0].sInfo));
 
-	char sIpAddr[15]; // the successor
-	uint32_t sId = nd->sList[0].sInfo.id; // the successor
+	unsigned char sId[SHA_DIGEST_LENGTH];
+	memcpy(sId, nd->sList[0].sInfo.id, SHA_DIGEST_LENGTH);// the successor
+	char sIpAddr[IPADDR_SIZE]; // the successor
 	strcpy(sIpAddr, nd->sList[0].sInfo.ipAddr);
 	uint16_t sPort = nd->sList[0].sInfo.port; // the successor
 
-	uint32_t ssId = 0; // the successor's successor
-	char ssIpAddr[15]; // the successor's successor
+	unsigned char ssId[SHA_DIGEST_LENGTH];
+	memset(ssId, 0, SHA_DIGEST_LENGTH); // the successor's successor
+	char ssIpAddr[IPADDR_SIZE]; // the successor's successor
 	uint16_t ssPort = 0; // the successor's successor
 
 	i = 1;
-	while (nd->ndInfo.id != sId) {
-		fprintf(stderr, "%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (unsigned long) sPort);
-		ssId = 0; memset(ssIpAddr,0,15); ssPort = 0;
+	char mdString[SHA_DIGEST_LENGTH*2+1];
+	while (cmpHashValue(nd->ndInfo.id, sId) != 0) {
+		hashToString(sId, mdString);
+		fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__, mdString , sIpAddr, (unsigned long) sPort);
+		memset(ssId, 0, SHA_DIGEST_LENGTH);
+		memset(ssIpAddr,0,15); 
+		ssPort = 0;
 		if (checkAlive(sIpAddr, sPort)) {
-			askSuccForSucc(sId, sIpAddr, sPort, &ssId, ssIpAddr, &ssPort);
+			askSuccForSucc(sId, sIpAddr, sPort, ssId, ssIpAddr, &ssPort);
 		} else {
-			sId = nd->sList[i-1].info.id;
+			memcpy(sId, nd->sList[i-1].info.id, SHA_DIGEST_LENGTH);
 			sPort = nd->sList[i-1].info.port;
 			strcpy(sIpAddr, nd->sList[i-1].info.ipAddr);
-			fprintf(stderr, "%i %s %lu %s %lu\n", __LINE__, __FILE__, (unsigned long) sId, sIpAddr, (unsigned long) sPort);
+			hashToString(sId, mdString);
+			fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__,  sId, sIpAddr, (unsigned long) sPort);
 			usleep(100 * 1000);
 			continue;
 		}
 		
 		//successor
-		nd->sList[i].info.id = sId;
+		memcpy(nd->sList[i].info.id, sId, SHA_DIGEST_LENGTH);
 		nd->sList[i].info.port = sPort;
 		strcpy(nd->sList[i].info.ipAddr, sIpAddr);
 
 		//sucessor's successor
-		nd->sList[i].sInfo.id = ssId;
+		memcpy(nd->sList[i].sInfo.id, ssId, SHA_DIGEST_LENGTH);
 		nd->sList[i].sInfo.port = ssPort;
 		strcpy(nd->sList[i++].sInfo.ipAddr, ssIpAddr);
 
-		sId = ssId;
+		memcpy(sId, ssId, SHA_DIGEST_LENGTH);
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
 	}
 }
 
-/**
- * A help function to copy the structure NodeInfo
- * @param src [description]
- * @param dst [description]
- */
-void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
-	dst->id = src->id;
-	dst->port = src->port;
-	strcpy(dst->ipAddr, src->ipAddr);
-}
+
 
 #if 0
 /**
@@ -440,8 +479,8 @@ void askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr,
  * @param  ssPort   [description]
  * @return          [description]
  */
-void askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
-					uint32_t* ssId, char* ssIpAddr, uint16_t* ssPort) {
+void askSuccForSucc(unsigned char* sId, char* sIpAddr, uint16_t sPort,
+					unsigned char* ssId, char* ssIpAddr, uint16_t* ssPort) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == -1) {
 		fprintf(stderr, "Socket opening error\n");
@@ -463,15 +502,15 @@ void askSuccForSucc(uint32_t sId, char* sIpAddr, uint16_t sPort,
  * @param predIpAddr [description]
  * @param predPort   [description]
  */
-void askSuccForPred(uint32_t sId, char* sIpAddr, uint16_t sPort,
-					uint32_t* predId, char* predIpAddr, uint16_t* predPort) {
+void askSuccForPred(unsigned char* sId, char* sIpAddr, uint16_t sPort,
+					unsigned char* predId, char* predIpAddr, uint16_t* predPort) {
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == -1) {
 		fprintf(stderr, "Socket opening error\n");
 		close(sockfd);
 		return;
 	}
-	sendReqSuccForPredPkt(sockfd, sId, sIpAddr, sPort);
+	sendReqSuccForPredPkt(sockfd, NULL, sIpAddr, sPort);
 	recvResPkt(sockfd, predId, predIpAddr, predPort);
 	close(sockfd);
 }
@@ -507,11 +546,13 @@ bool checkAlive(char* ipAddr, uint16_t port) {
  */
 void notify(struct NodeInfo pNodeInfo) {
 	pthread_mutex_lock(&lock);
-	uint32_t sId = nd->ft[0].sInfo.id;
+	unsigned char sId[SHA_DIGEST_LENGTH];
+	memcpy(sId, nd->ft[0].sInfo.id, SHA_DIGEST_LENGTH);
 	uint16_t sPort = nd->ft[0].sInfo.port;
-	char sIpAddr[15];
+	char sIpAddr[IPADDR_SIZE];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
-	uint32_t pId = nd->predInfo.id;
+	unsigned char pId[SHA_DIGEST_LENGTH];
+	memcpy(pId, nd->predInfo.id, SHA_DIGEST_LENGTH);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == -1) {
@@ -520,8 +561,15 @@ void notify(struct NodeInfo pNodeInfo) {
 		return;
 	}
 
-	if ((pId == 0) || nd->ndInfo.id == pNodeInfo.id) {
-		fprintf(stderr, "[Notify] targetId %lu would be changed to %lu\n", (unsigned long)sId, (unsigned long)nd->ndInfo.id);
+	unsigned char tmp[SHA_DIGEST_LENGTH];
+	memset(tmp, 0, SHA_DIGEST_LENGTH);
+
+	if ((cmpHashValue(pId, tmp) == 0) || cmpHashValue(nd->ndInfo.id, pNodeInfo.id) == 0) {
+		char mdString[SHA_DIGEST_LENGTH*2+1];
+		char mdString2[SHA_DIGEST_LENGTH*2+1];
+		hashToString(sId, mdString);
+		hashToString(nd->ndInfo.id, mdString2);
+		fprintf(stderr, "[Notify] targetId %s would be changed to %s\n", mdString, mdString2);
 		sendNotifyPkt(sockfd, sId, sIpAddr, sPort, nd->ndInfo.id, nd->ndInfo.ipAddr, nd->ndInfo.port);
 	}
 
@@ -533,54 +581,40 @@ void notify(struct NodeInfo pNodeInfo) {
  * Fix the finger table
  */
 void fixFingers() {
-/* OLD VERSION: retrieving via sockets*/
-#if 1
 	int i = 0;
-	uint32_t sId = 0;
+	unsigned char sId[SHA_DIGEST_LENGTH];
 	uint16_t sPort = 0;
-	char sIpAddr[15];
-	uint32_t targetId = 0;
-
+	char sIpAddr[IPADDR_SIZE];
+	unsigned char targetId[SHA_DIGEST_LENGTH];
+#if 1
 	for (i = 1; i < nd->ftSize; ++i) {
-		targetId = nd->ft[i].start;
-		if ((targetId <= nd->ft[i-1].sInfo.id) || nd->ft[i-1].sInfo.id == 1){
-			nd->ft[i].sInfo.id = nd->ft[i-1].sInfo.id;
+		memcpy(targetId, nd->ft[i].start, SHA_DIGEST_LENGTH);
+		if (between(targetId, nd->ft[i-1].start, nd->ft[i-1].sInfo.id)) {
+			memcpy(nd->ft[i].sInfo.id, nd->ft[i-1].sInfo.id, SHA_DIGEST_LENGTH);
 			strcpy(nd->ft[i].sInfo.ipAddr, nd->ft[i-1].sInfo.ipAddr);
 			nd->ft[i].sInfo.port = nd->ft[i-1].sInfo.port;
 		} else {
 			// ask its sucessor for the targer ID
-			sId = nd->ft[0].sInfo.id;
 			strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
 			sPort = nd->ft[0].sInfo.port;
-			if(findSuccessor(targetId, &sId, sIpAddr, &sPort)) {
-				nd->ft[i].sInfo.id = sId;
+			if(findSuccessor(targetId, sId, sIpAddr, &sPort)) {
+				memcpy(nd->ft[i].sInfo.id, sId, SHA_DIGEST_LENGTH);
 				strcpy(nd->ft[i].sInfo.ipAddr, sIpAddr);
 				nd->ft[i].sInfo.port = sPort;
 			}
 		}
 	}
 #endif
-
-/* This version is to use successList */
 #if 0
-	int i, j = 0;
-	uint32_t targetId = 0;
-	
 	for (i = 1; i < nd->ftSize; ++i) {
-		targetId = nd->ft[i].start;
-		for (j = 0; (int)pow(2, FT_SIZE); ++j) {
-			if ((nd->sList[j].sInfo.id != 0) 
-					&& (targetId <= nd->sList[j].sInfo.id)) {
-				nd->ft[i].sInfo.id = nd->sList[j].sInfo.id;
-				strcpy(nd->ft[i].sInfo.ipAddr, "127.0.0.1");
-				nd->ft[i].sInfo.port = nd->sList[j].sInfo.port;
-				break;
-			}
+		memcpy(targetId, nd->ft[i].start, SHA_DIGEST_LENGTH);
+		strcpy(sIpAddr, nd->ndInfo.ipAddr);
+		sPort = nd->ndInfo.port;
+		if(findSuccessor(targetId, sId, sIpAddr, &sPort)) {
+			memcpy(nd->ft[i].sInfo.id, sId, SHA_DIGEST_LENGTH);
+			strcpy(nd->ft[i].sInfo.ipAddr, sIpAddr);
+			nd->ft[i].sInfo.port = sPort;
 		}
-		//when its next successor is the first (default) node 
-		nd->ft[i].sInfo.id = DEFAULT_NODE_ID;
-		strcpy(nd->ft[i].sInfo.ipAddr, "127.0.0.1");
-		nd->ft[i].sInfo.port = DEFAULT_PORT+DEFAULT_NODE_ID;
 	}
 #endif
 	printFT();
@@ -592,8 +626,8 @@ void fixFingers() {
  * @param ipAddr predecessor ip address
  * @param port   predecessor port
  */
-void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port) {
-	*id = nd->predInfo.id;
+void getPredecesor(unsigned char* id, char* ipAddr, uint16_t* port) {
+	memcpy(id, nd->predInfo.id, SHA_DIGEST_LENGTH);
 	strcpy(ipAddr, nd->predInfo.ipAddr);
 	*port = nd->predInfo.port;
 }
@@ -604,8 +638,8 @@ void getPredecesor(uint32_t* id, char* ipAddr, uint16_t* port) {
  * @param ipAddr [description]
  * @param port   [description]
  */
-void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
-	*id = nd->ft[0].sInfo.id;
+void getSuccessor(unsigned char* id, char* ipAddr, uint16_t* port) {
+	memcpy(id, nd->ft[0].sInfo.id, SHA_DIGEST_LENGTH);
 	strcpy(ipAddr, nd->ft[0].sInfo.ipAddr);
 	*port = nd->ft[0].sInfo.port;
 }
@@ -616,7 +650,9 @@ void getSuccessor(uint32_t* id, char* ipAddr, uint16_t* port) {
  * @param keys keys to be moved to the request node
  * @param num  the number of the returned keys 
  */
-void getKeys(uint32_t id, uint32_t keys[], int* num) {
+
+void getKeys(unsigned char* id, uint32_t keys[], int* num) {
+#if 0
 	int i = 0; int j = 0;
 	int size = nd->keySize;
 	for (i = 0; i < size; ++i) {
@@ -640,6 +676,7 @@ void getKeys(uint32_t id, uint32_t keys[], int* num) {
 	
 	nd->keySize = size - j;
 	*num = j;
+#endif
 }
 
 #if 0
@@ -662,6 +699,7 @@ int transferKeys(uint32_t id, char* ipAddr, uint16_t port, uint32_t keys[], int 
  * @param keys    Keys
  * @param keySize The size of keys
  */
+#if 0
 void setKeys(uint32_t keys[], int keySize) {
 	int i = 0;
 	int size = nd->keySize;
@@ -672,6 +710,7 @@ void setKeys(uint32_t keys[], int keySize) {
 	// sort key array
 	qsort(nd->key, nd->keySize, sizeof(int), cmpfunc);
 }
+#endif
 
 /**
  * Modify its predecessor
@@ -679,22 +718,39 @@ void setKeys(uint32_t keys[], int keySize) {
  * @param ipAddr predecessor ip address
  * @param port   predecessor port
  */
-void modifyPred(uint32_t id, char* ipAddr, uint16_t port) {
+void modifyPred(unsigned char* id, char* ipAddr, uint16_t port) {
 	pthread_mutex_lock(&lock);
-	nd->predInfo.id = id;
+	memcpy(nd->predInfo.id, id, SHA_DIGEST_LENGTH);
 	nd->predInfo.port = port;
 	strcpy(nd->predInfo.ipAddr, ipAddr);
 	fprintf(stderr, "ModifyPred: %lu\n", (unsigned long) id);
 	pthread_mutex_unlock(&lock);
 }
 
+/**
+ * A help function to copy the structure NodeInfo
+ * @param src [description]
+ * @param dst [description]
+ */
+void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
+	memcpy(dst->id, src->id, SHA_DIGEST_LENGTH);
+	dst->port = src->port;
+	strcpy(dst->ipAddr, src->ipAddr);
+}
+
 void printDebug() {
-	fprintf(stderr, "Predecessor ID: %lu, Predecessor Port: %lu\n", 
-		(unsigned long) nd->predInfo.id, 
-		(unsigned long) nd->predInfo.port);
-	fprintf(stderr, "Successor ID: %lu, Successor Port: %lu\n", 
-		(unsigned long) nd->ft[0].sInfo.id, 
-		(unsigned long) nd->ft[0].sInfo.port);
+	char mdId[SHA_DIGEST_LENGTH*2+1];
+	char mdString[SHA_DIGEST_LENGTH*2+1];
+	char mdString2[SHA_DIGEST_LENGTH*2+1];
+	hashToString(nd->ft[0].sInfo.id, mdString);
+	hashToString(nd->predInfo.id, mdString2);
+	hashToString(nd->ndInfo.id, mdId);
+	fprintf(stderr, "ID: %s\n", mdId);
+	fprintf(stderr, "Predecessor ID: %s, Predecessor Port: %lu\n", 
+		mdString2, (unsigned long) nd->predInfo.port);
+	fprintf(stderr, "Successor ID: %s, Successor Port: %lu\n", 
+		mdString, (unsigned long) nd->ft[0].sInfo.port);
+	
 	/*int i = 0;
 	fprintf(stderr, "Keys:");
 	for (i = 0; i < nd->keySize; ++i) {
@@ -705,14 +761,19 @@ void printDebug() {
 }
 
 void printFT() {
+	fprintf(stderr, "[FT START]\n");
+	char mdString[SHA_DIGEST_LENGTH*2+1];
+	char mdString2[SHA_DIGEST_LENGTH*2+1];
+
 	int i = 0;
 	for (i = 0; i < nd->ftSize; ++i) {
-		fprintf(stderr, "Start: %d \t Succ: %lu \t IP: %s \t Port: %lu\n", 
-			nd->ft[i].start, 
-			(unsigned long)nd->ft[i].sInfo.id,
-			nd->ft[i].sInfo.ipAddr,
+		hashToString(nd->ft[i].start, mdString);
+		hashToString(nd->ft[i].sInfo.id, mdString2);
+		fprintf(stderr, "Start: %s \t Succ: %s \t IP: %s \t Port: %lu\n", 
+			mdString, mdString2, nd->ft[i].sInfo.ipAddr,
 			(unsigned long)nd->ft[i].sInfo.port);
 	}
+	fprintf(stderr, "[FT END]\n");
 }
 
 void printSuccList() {
@@ -720,10 +781,6 @@ void printSuccList() {
 	// for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
 	fprintf(stderr, "Successors: ");
 	for (i = 0; i < 100; ++i) {
-		// printf("ID: %lu -> SID: %lu \n", 
-		// 	(unsigned long)nd->sList[i].info.id,
-		// 	(unsigned long)nd->sList[i].sInfo.id);
-
 		if ((unsigned long)nd->sList[i].sInfo.id == 0)
 			break;
 		fprintf(stderr, "%lu ", (unsigned long)nd->sList[i].sInfo.id);

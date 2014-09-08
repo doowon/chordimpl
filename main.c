@@ -13,43 +13,39 @@ int main(int argc, char *argv[]) {
 	// free(mdString);
 
 	if (argc > 3 && argc < 2) {
-		printf("Usage: chord -n nodeid -f -i\n");
+		printf("Usage: chord -p portNum -f fileName-t -i\n");
 		return -1;
 	}
 	
 	int c = 0;
-	bool failure = false;
 	int fTime = 0;
-	int nodeId = 0;
+	int port = 0;
 	bool interactive = false;
-	while ((c = getopt(argc, argv, "f:n:i")) != -1) {
+	char* fileName = NULL;
+	while ((c = getopt(argc, argv, "f:t:p:i")) != -1) {
 		switch (c) {
-		case 'f': 
-			failure = true; 
+		case 't': 
 			fTime = atoi(optarg);
 			break;
-		case 'n':
-			nodeId = atoi(optarg);
+		case 'p':
+			port = atoi(optarg);
 			break;
 		case 'i':
 			interactive = true;
 			break;
+		case 'f':
+			fileName = optarg;
+			fprintf(stderr, "fileName: %s\n", fileName);
+			break;
 		default:
-			printf("Usage: chord -n nodeid -f -i\n");
+			printf("Usage: chord -p portNum -t -i\n");
 			return -1;
 		}
 	}
 	
-	if (nodeId > 0){
-		if (failure && !interactive) {
-			initNode(nodeId, fTime, false);
-		} else if (!failure && !interactive) {
-			initNode(nodeId, 0, false);
-		} else if (!failure && interactive) {
-			printf("Interative Mode\n");
-			initNode(nodeId, 0, true);
-		}
+	if (port > 0){
+		initNode(fileName, port, fTime, interactive);
 	}
-
+	free(fileName);
 	return 0;
 }

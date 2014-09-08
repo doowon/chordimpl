@@ -6,16 +6,30 @@
 
 #include "node.h"
 #include "chord.h"
+#include "util.h"
 
 /**
  * Init Node
  * @param  nodeId     [description]
  * @return            [description]
  */
-int initNode(uint32_t nodeId, unsigned int fTime, bool menu) {
+int initNode(char* fileName, uint16_t port, int fTime, bool menu) {
 	int err = -1;
-	uint16_t port = DEFAULT_PORT + nodeId;
-	
+	fp = fopen(fileName, "r+");
+	if (fp == NULL) {
+		fprintf(stderr, "Can't open data file, %s\n", fileName);
+		abort();
+	}
+	fseek(fp, 0L, SEEK_END);
+	int fileSize = ftell(fp);
+	fseek(fp, 0L, SEEK_SET);
+	char* data = malloc(sizeof(char) * fileSize);
+	if (fread(data, 1, fileSize, fp) != fileSize) {
+		fprintf(stderr, "Reading error, %s\n", fileName);
+		abort();
+	}
+
+	initChord(data, fileSize, port);
 	initServerSocket(port);
 
 	//create a thread of server socket 
@@ -30,9 +44,10 @@ int initNode(uint32_t nodeId, unsigned int fTime, bool menu) {
 		fprintf(stderr, "can't create a pthread of a server socket\n");
 		abort();
 	}
-
-	initChord(nodeId);
 	
+	if (port >= 6001)
+		join();
+
 	//create a thread of looping stablizing
 	err = pthread_create(&(tid[2]), NULL, (void*)&loopStablize, NULL);
 	if (err != 0) {
@@ -55,7 +70,9 @@ int initNode(uint32_t nodeId, unsigned int fTime, bool menu) {
 	
 	pthread_mutex_destroy(&lock);
 	
-	abort();
+	free(data);
+	fclose(fp);
+
 	return 0;
 }
 
@@ -93,7 +110,7 @@ void initServerSocket(uint16_t port) {
 
 }
 
-void listenServerTCPSocket() {
+void listenServerTCPSocket() {	
 	fprintf(stderr, "server: TCP listening... at\n");
 
 	listen(connfdTCP, 5);
@@ -101,8 +118,8 @@ void listenServerTCPSocket() {
 	char recvBuf[512];
 	int keySize = 0;
 	uint32_t keys[1024];
-	uint32_t sId = 0;
-	uint32_t targetId = 0;
+	unsigned char sId[SHA_DIGEST_LENGTH];
+	unsigned char targetId[SHA_DIGEST_LENGTH];
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
 
@@ -110,12 +127,12 @@ void listenServerTCPSocket() {
 		sockfd = accept(connfdTCP, (struct sockaddr*)NULL, NULL);
 
 		//receive messages
-		if (readFromSocket(sockfd, recvBuf, BUF_SIZE) < 0) {
+		if (readFromSocket(sockfd, recvBuf, 1024) < 0) {
 			close(sockfd);
 		}
 
 		memset(ipAddr, 0, IPADDR_SIZE);
-		int pktType = parse(recvBuf, &targetId, &sId, ipAddr, &port, NULL, NULL);
+		int pktType = parse(recvBuf, targetId, sId, ipAddr, &port, NULL, NULL);
 
 		switch (pktType) {
 		case -1:
@@ -162,12 +179,12 @@ void listenServerUDPSocket() {
 	struct sockaddr_in cliAddr;
 	socklen_t len = 0;					// size of the client addr struct
 
-	uint32_t targetId = 0;
+	unsigned char targetId[SHA_DIGEST_LENGTH];
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
-	uint32_t predId = 0;
+	unsigned char predId[SHA_DIGEST_LENGTH];
 	uint16_t predPort = 0;
-	uint32_t sId = 0;
+	unsigned char sId[SHA_DIGEST_LENGTH];
 	uint16_t sPort = 0;
 	int size = 0;
 
@@ -183,7 +200,7 @@ void listenServerUDPSocket() {
 			fprintf(stderr, "received packet < 0 \n");
 			continue;
 		}
-		int pktType = parse(recvBuf, &targetId, &sId, ipAddr, &port, NULL, NULL);
+		int pktType = parse(recvBuf, targetId, sId, ipAddr, &port, NULL, NULL);
 
 		switch (pktType) {
 		case ERROR: //error occured
@@ -191,13 +208,13 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_FIND_CLOSEST_FINGER: // Find closest finger preceding
-			fprintf(stderr, "REQ_FIND_CLOSEST_FINGER\n");	
-			size = sizeof(char) * 12;
+			// fprintf(stderr, "REQ_FIND_CLOSEST_FINGER\n");
+			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
-			if (closestPrecedingFinger(targetId, &sId, ipAddr, &port)) { // found
-				createResPkt(sendBuf, 0, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_FOUND);
+			if (closestPrecedingFinger(targetId, sId, ipAddr, &port)) { // found
+				createResPkt(sendBuf, NULL, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_FOUND);
 			} else {
-				createResPkt(sendBuf, 0, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_NOTFOUND);
+				createResPkt(sendBuf, NULL, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_NOTFOUND);
 			}
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
@@ -205,20 +222,20 @@ void listenServerUDPSocket() {
 		
 		case REQ_GET_PRED: // Req Predecessor
 			fprintf(stderr, "REQ_GET_PRED\n");				
-			size = sizeof(char) * 12;
+			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
-			getPredecesor(&predId, ipAddr, &predPort);
-			createResPkt(sendBuf, 0, predId, ipAddr, predPort, RES_GET_PRED);
+			getPredecesor(predId, ipAddr, &predPort);
+			createResPkt(sendBuf, NULL, predId, ipAddr, predPort, RES_GET_PRED);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
 		
 		case REQ_GET_SUCC:  // reply the successor
 			fprintf(stderr, "REQ_GET_SUCC\n");
-			size = sizeof(char) * 12;
+			size = sizeof(char) * 28;
 			sendBuf = malloc(size);	
-			getSuccessor(&sId, ipAddr, &sPort);
-			createResPkt(sendBuf, 0, sId, ipAddr, sPort, RES_GET_SUCC);
+			getSuccessor(sId, ipAddr, &sPort);
+			createResPkt(sendBuf, NULL, sId, ipAddr, sPort, RES_GET_SUCC);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
@@ -232,7 +249,7 @@ void listenServerUDPSocket() {
 			fprintf(stderr, "REQ_CHECK_ALIVE\n");
 			size = sizeof(char) * 2;
 			sendBuf = malloc(size);
-			createResPkt(sendBuf, 0, 0, NULL, 0, RES_CHECK_ALIVE);
+			createResPkt(sendBuf, NULL, NULL, NULL, 0, RES_CHECK_ALIVE);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
@@ -280,8 +297,10 @@ int closeSocket(int socketfd) {
  * @param  buf [description]
  * @return     [description]
  */
-void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, 
-					uint16_t port, int pktType) {
+void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
+					char* ipAddr, uint16_t port, int pktType) {
+
+	int i = 0;
 
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
@@ -292,10 +311,9 @@ void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr,
 		buf[2] = 0x00;
 		buf[3] = 0x00;
 
-		buf[4] = (targetId >> 8*3) & 0xFF;	//Target ID HIGH
-		buf[5] = (targetId >> 8*2) & 0xFF;
-		buf[6] = (targetId >> 8*1) & 0xFF;
-		buf[7] = targetId & 0xFF;			//Target ID LOW
+		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			buf[i+4] = targetId[i] & 0xFF;
+		}
 		break;
 
 	case REQ_GET_PRED:
@@ -318,10 +336,10 @@ void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr,
 		buf[6] = (tmp_addr.sin_addr.s_addr >> 8*1) & 0xFF;
 		buf[7] =  tmp_addr.sin_addr.s_addr & 0xFF;			//IP Adr low
 		
-		buf[8] = (sId >> 8*3) & 0xFF;	//NODE ID HIGH
-		buf[9] = (sId >> 8*2) & 0xFF;
-		buf[10] = (sId >> 8*1) & 0xFF;
-		buf[11] = sId & 0xFF;			//NODE ID LOW
+		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			buf[i+8] = sId[i];
+		}
+
 		break;
 
 	case REQ_CHECK_ALIVE:
@@ -345,8 +363,9 @@ void createReqPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr,
  * @param  buf [description]
  * @return     [description]
  */
-void createResPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr, 
-					uint16_t port, int pktType) {
+void createResPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
+					char* ipAddr, uint16_t port, int pktType) {
+	int i = 0;
 
 	switch (pktType) {
 	case RES_FIND_CLOSEST_FINGER_FOUND:
@@ -367,10 +386,9 @@ void createResPkt(char* buf, uint32_t targetId, uint32_t sId, char* ipAddr,
 		buf[7] =  tmp_addr.sin_addr.s_addr & 0xFF;			//IP Adr low
 		
 		//Succesor NODE ID
-		buf[8] = (sId >> 8*3) & 0xFF;	//NODE ID HIGH
-		buf[9] = (sId >> 8*2) & 0xFF;
-		buf[10] = (sId >> 8*1) & 0xFF;
-		buf[11] = sId & 0xFF;			//NODE ID LOW
+		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			buf[i+8] = sId[i];
+		}
 		break;
 	
 	case RES_CHECK_ALIVE:
@@ -424,7 +442,7 @@ void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int ty
  * @param  port     [description]
  * @return          packet type
  */
-int parse(char buf[], uint32_t* targetId, uint32_t* sId, char* ipAddr, 
+int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr, 
 			uint16_t* port, uint32_t keys[], int* keySize) {
 	
 	if ((buf[0] & 0xFF) != 0xC0) {
@@ -433,11 +451,12 @@ int parse(char buf[], uint32_t* targetId, uint32_t* sId, char* ipAddr,
 	}
 
 	int pktType = buf[1] & 0xFF;
-
+	int i = 0;
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
-		*targetId = ((buf[4]&0xFF) << 8*3) | ((buf[5]&0xFF) << 8*2) 
-					| ((buf[6]&0xFF) << 8) | (buf[7]&0xFF);
+		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			targetId[i] = buf[i+4];
+		}
 		break;
 	
 	case RES_FIND_CLOSEST_FINGER_FOUND:
@@ -449,8 +468,9 @@ int parse(char buf[], uint32_t* targetId, uint32_t* sId, char* ipAddr,
 		uint32_t ip = (buf[4]&0xFF) << 8*3 | (buf[5]&0xFF) << 8*2 
 					| (buf[6]&0xFF) << 8 | (buf[7]&0xFF);
 		inet_ntop(AF_INET, &(ip), ipAddr, INET_ADDRSTRLEN);
-		*sId  = ((buf[8]&0xFF) << 8*3) | ((buf[9]&0xFF) << 8*2) 
-				|((buf[10]&0xFF) << 8) | (buf[11]&0xFF);
+		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			sId[i] = buf[i+8];
+		}
 		break;
 
 	case RES_GET_KEYS:
@@ -483,18 +503,19 @@ int parse(char buf[], uint32_t* targetId, uint32_t* sId, char* ipAddr,
  * @param  port     [description]
  * @return          [description]
  */
-void sendReqClosestFingerPkt(int sockfd, uint32_t targetId, uint32_t sId, char* ipAddr, uint16_t port) {
+void sendReqClosestFingerPkt(int sockfd, unsigned char* targetId, char* sIpAddr, 
+								uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
-	cliAddr.sin_addr.s_addr = inet_addr(ipAddr);
-	cliAddr.sin_port = htons(port);
+	cliAddr.sin_addr.s_addr = inet_addr(sIpAddr);
+	cliAddr.sin_port = htons(sPort);
 
-	int size = sizeof(char) * 8;
+	int size = sizeof(char) * 24;
 	char* buf = malloc(size);
 	memset(buf, 0, size);
 
-	createReqPkt(buf, targetId, 0, NULL, 0, REQ_FIND_CLOSEST_FINGER);
+	createReqPkt(buf, targetId, NULL, NULL, 0, REQ_FIND_CLOSEST_FINGER);
 	sendto(sockfd, buf, size, 0, (struct sockaddr*)&cliAddr, sizeof(cliAddr));
 
 	free(buf);
@@ -507,7 +528,7 @@ void sendReqClosestFingerPkt(int sockfd, uint32_t targetId, uint32_t sId, char* 
  * @param  sPort   Successor Port to be asked
  * @return         -1 if error, 0 if successful
  */
-void sendReqSuccForPredPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForPredPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
@@ -518,7 +539,7 @@ void sendReqSuccForPredPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPo
 	char* buf = malloc(size);
 	memset(buf, 0, size);
 
-	createReqPkt(buf, 0, 0, NULL, 0, REQ_GET_PRED);
+	createReqPkt(buf, NULL, NULL, NULL, 0, REQ_GET_PRED);
 	sendto(sockfd, buf, size, 0, (struct sockaddr*)&cliAddr, sizeof(cliAddr));
 
 	free(buf);
@@ -531,7 +552,7 @@ void sendReqSuccForPredPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPo
  * @param  sPort   Successor Port to be asked
  * @return         -1 if error, 0 if successful
  */
-void sendReqSuccForSuccPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForSuccPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
@@ -558,8 +579,8 @@ void sendReqSuccForSuccPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPo
  * @param  port    [description]
  * @return         -1 if error, 0 if success
  */
-void sendNotifyPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort,
-					uint32_t id, char* ipAddr, uint16_t port) {
+void sendNotifyPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort,
+					unsigned char* id, char* ipAddr, uint16_t port) {
 
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
@@ -567,7 +588,7 @@ void sendNotifyPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort,
 	cliAddr.sin_addr.s_addr = inet_addr(sIpAddr);
 	cliAddr.sin_port = htons(sPort);
 
-	int size = sizeof(char) * 12;
+	int size = sizeof(char) * 28;
 	char* buf = malloc(size);
 	memset(buf, 0, size);
 
@@ -586,7 +607,7 @@ void sendNotifyPkt(int sockfd, uint32_t sId, char* sIpAddr, uint16_t sPort,
  * @param  sPort   the successor node port
  * @return         -1 if failed, 0 if success
  */
-void sendReqSuccForKeyPkt(int sockfd, uint32_t id, uint32_t sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForKeyPkt(int sockfd, unsigned char* id, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
 	int size = sizeof(char) * 8;
 	char* buf = malloc(size);
 	createReqPkt(buf, id, 0, NULL, 0, REQ_GET_KEYS);
@@ -619,7 +640,7 @@ void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port) {
  * @param  sPort    [description]
  * @return          [description]
  */
-int recvResPkt(int sockfd, uint32_t* sId, char* sIpAddr, uint16_t* sPort) {
+int recvResPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t* sPort) {
 	char buf[128];
 	recvfrom(sockfd, buf, 128, 0, NULL, NULL);
 	int pktType = parse(buf, NULL, sId, sIpAddr, sPort, NULL, NULL);
@@ -709,7 +730,7 @@ int connectToServer(int* sockfd, char* ipAddr, uint16_t port) {
 * @param size [description]
 * @return the length of received message
 */
-int readFromSocket(int sockfd, char* buf, unsigned int size) {
+int readFromSocket(int sockfd, char* buf, int size) {
 	int n = read(sockfd, buf, size);
 	return n;
 }
@@ -721,7 +742,7 @@ int readFromSocket(int sockfd, char* buf, unsigned int size) {
 * @param size The size of message to be sent
 * @return 0 if success
 */
-int writeToSocket(int sockfd, char* buf, unsigned int size) {
+int writeToSocket(int sockfd, char* buf, int size) {
 	write(sockfd, buf, size);
 	return 0;
 }
@@ -730,6 +751,7 @@ int writeToSocket(int sockfd, char* buf, unsigned int size) {
  * Print menu
  */
 void printMenu() {
+#if 0
 	char *prompt = "> ";
 
 	while (true) {
@@ -772,4 +794,5 @@ void printMenu() {
 			break;
 		}
 	}
+#endif
 }

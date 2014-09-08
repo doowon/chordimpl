@@ -1,9 +1,12 @@
 CC=gcc
 CFLAGS=-I. -Werror -Wall -DDEBUG
 
-chord: chord.o node.o main.o
-	$(CC) -o chord chord.o node.o main.o $(CFLAGS) \
-	-lm -lpthread
+chord: chord.o node.o main.o util.o
+	$(CC) -o chord chord.o node.o util.o main.o $(CFLAGS) \
+	-lm -lpthread -lssl -lcrypto
+
+util.o: util.c
+	$(CC) -c util.c $(CFLAGS)
 
 node.o: node.c
 	$(CC) -c node.c $(CFLAGS)
