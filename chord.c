@@ -154,7 +154,7 @@ bool closestPrecedingFinger(unsigned char* targetId, unsigned char* sId, char* i
 
 	int i = 0;
 	for (i = nd->ftSize-1; i > 0; --i) {
-		if (between(nd->ft[i].sInfo.id, nd->ndInfo.id, targetId)) {
+		if (between(nd->ft[i].start, nd->ndInfo.id, targetId)) {
 			memcpy(sId, nd->ft[i].sInfo.id, SHA_DIGEST_LENGTH);
 			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
 			*port = nd->ft[i].sInfo.port;
@@ -223,6 +223,7 @@ bool between(const unsigned char* id, const unsigned char* start,
  * @return [description]
  */
 void join() {
+fprintf(stderr, "[Join]----\n");
 	while (true) {
 		char ipAddr[IPADDR_SIZE];
 		strcpy(ipAddr, DEFAULT_IP_ADDR);
@@ -292,6 +293,7 @@ void leave() {
  * Stablize the node
  */
 void stabilize() {
+	
 	unsigned char sId[SHA_DIGEST_LENGTH];
 	memcpy(sId, nd->ft[0].sInfo.id, SHA_DIGEST_LENGTH);
 	uint16_t sPort = nd->ft[0].sInfo.port;
@@ -321,10 +323,12 @@ void stabilize() {
 		}
 	}
 
+	printDebug();
+
 	//ask succesor for its predecessor
 	unsigned char predId[SHA_DIGEST_LENGTH];
 	uint16_t predPort = 0;
-	char predIpAddr[15];
+	char predIpAddr[IPADDR_SIZE];
 	
 	askSuccForPred(sId, sIpAddr, sPort, predId, predIpAddr, &predPort);
 	
@@ -335,7 +339,7 @@ void stabilize() {
 	fprintf(stderr, "[Stabilzing] PredID1: %s PredPort: %lu SID: %s\n", mdString2, (unsigned long) predPort, mdString);
 	if (cmpHashValue(nd->ndInfo.id, predId) != 0) {
 		//this node is not just joining & connect
-		if (nd->predInfo.port != 0 && checkAlive(predIpAddr,predPort)) { 
+		if (nd->predInfo.port != 0 && checkAlive(predIpAddr, predPort)) { 
 			
 			fprintf(stderr, "[Stabilzing] PredID2: %s PredPort: %lu\n", mdString2, (unsigned long) predPort);
 
@@ -367,18 +371,7 @@ void stabilize() {
 #endif
 	}
 
-	
-	// if (!((cmpHashValue(nd->ft[0].sInfo.id, tmp) == 0)
-	// 		|| (nd->ft[0].sInfo.port == 0)
-	// 		|| (cmpHashValue(nd->ft[0].sInfo.id, nd->ndInfo.id) == 0)
-	// 		|| (nd->ft[0].sInfo.port == nd->ndInfo.port) 
-	// 		|| (cmpHashValue(nd->predInfo.id, tmp) == 0))) {
-		
-		// buildSuccessorList();
-		// printSuccList();
-		fixFingers();
-	// }
-
+	fixFingers();
 	printDebug();
 }
 
@@ -723,8 +716,11 @@ void modifyPred(unsigned char* id, char* ipAddr, uint16_t port) {
 	memcpy(nd->predInfo.id, id, SHA_DIGEST_LENGTH);
 	nd->predInfo.port = port;
 	strcpy(nd->predInfo.ipAddr, ipAddr);
-	fprintf(stderr, "ModifyPred: %lu\n", (unsigned long) id);
 	pthread_mutex_unlock(&lock);
+
+	char md[SHA_DIGEST_LENGTH*2+1];
+	hashToString(id, md);
+	fprintf(stderr, "ModifyPredID: %s\n", md);
 }
 
 /**
