@@ -28,7 +28,7 @@
 #define FT_SIZE 160
 #define IPADDR_SIZE 15
 #define NUM_KEYS 20
-#define SLIST_SIZE 0
+#define SLIST_SIZE 3
 
 typedef int bool;
 #define true 1

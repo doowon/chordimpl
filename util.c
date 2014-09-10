@@ -27,14 +27,18 @@ void addValueToHash(unsigned char* digest, unsigned char* value, unsigned char* 
 	for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
 		if (carry) {
 			ret[i] = digest[i] + value[i] + 0x01;
-			carry = false;
+			if ((unsigned int)(digest[i] + value[i] + 0x01) > 255) {
+				carry = true;
+			} else {
+				carry = false;
+			}
 		} else {
 			ret[i] = digest[i] + value[i];
-		}
-		if ((unsigned int)(digest[i] + value[i]) > 255) {
-			carry = true;
-		} else if (carry && (unsigned int)(digest[i] + value[i] + 0x01) > 255) {
-			carry = true;	
+			if ((unsigned int)(digest[i] + value[i]) > 255) {
+				carry = true;
+			} else {
+				carry = false;
+			}
 		}
 	}
 }

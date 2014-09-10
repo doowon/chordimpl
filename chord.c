@@ -70,42 +70,6 @@ void initChord(char* data, int dataSize, uint16_t port) {
 	}
 }
 
-
-#if 0
-/**
- * Find the successor of target ID and return the successor ID, IP, and port
- * @param  targetId To be looked for
- * @param  sId      Successor ID of the targetID
- * @param  sipAddr  Successor IP of the targetID
- * @param  sPort    Successor Port of the targetID
- * @return          -1 if error, 2 if found, and 0 if not found
- */
-int findSuccessor(uint32_t targetId, uint32_t* sId, char* sIpAddr, uint16_t* sPort) {
-	
-	//look for id in LOCAL
-	int n = closestPrecedingFinger(targetId, sId, sIpAddr, sPort);
-	if (n == 2) { // no need to request more
-		return 2;
-	} else if (n < 0) {
-		return -1;
-	}
-
-	// Look for targetId in remote
-	while (1) {
-		sendReqClosestFingerPkt(targetId, *sId, sIpAddr, *sPort);
-		uint32_t recvTargetId = 0;
-		n = recvResPkt(recvTargetId, sId, sIpAddr, sPort);
-		if (n == 2) {
-			return 2;
-		} else if (n < 0) {
-			return -1;
-		}
-	}
-
-	return 0;
-}
-#endif
-
 /**
  * Find the successor without looking for it in the local finger table
  * @param  targetId To be looked for
@@ -122,10 +86,16 @@ bool findSuccessor(unsigned char* targetId, unsigned char* sId, char* sIpAddr,
 		return false;
 	}
 	
+	char md[SHA_DIGEST_LENGTH*2+1];
+
 	int pktType = 0;
 	while (true) {
 		sendReqClosestFingerPkt(sockfd, targetId, sIpAddr, *sPort);
+		hashToString(targetId, md);
+		fprintf(stderr, "targetid: %s\n", md);
 		pktType = recvResPkt(sockfd, sId, sIpAddr, sPort);
+		hashToString(sId, md);
+		fprintf(stderr, "sId: %s\n", md);
 		if (pktType == RES_FIND_CLOSEST_FINGER_FOUND) {
 			close(sockfd);
 			return true;
@@ -159,7 +129,10 @@ bool closestPrecedingFinger(unsigned char* targetId, unsigned char* sId, char* i
 			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
 			*port = nd->ft[i].sInfo.port;
 
-			if (between(targetId, nd->ft[i].start, sId)) {
+			// if (between(targetId, nd->ft[i].start, sId)) {
+			if (cmpHashValue(targetId, sId) <= 0 
+				|| (cmpHashValue(targetId, sId) > 0
+					&& cmpHashValue(nd->ft[i].start, sId) > 0)) {
 				return true;
 			}
 
@@ -202,7 +175,7 @@ bool closestPrecedingFinger(unsigned char* targetId, unsigned char* sId, char* i
 bool between(const unsigned char* id, const unsigned char* start, 
 				const unsigned char* end) {
 
-	unsigned char max[SHA_DIGEST_LENGTH] = {0xff,};
+	unsigned char max[SHA_DIGEST_LENGTH] = {[0 ... SHA_DIGEST_LENGTH-1] = 0xff};
 	unsigned char min[SHA_DIGEST_LENGTH] = {0x00,};
 
 	if (cmpHashValue(start, end) < 0 && cmpHashValue(start, id) <= 0 
@@ -309,7 +282,7 @@ void stabilize() {
 	// To check to see if the successor fails
 	if (!checkAlive(sIpAddr, sPort)) {
 		int i = 0;
-		for (i = 1; i < SLIST_SIZE; ++i) {
+		for (i = 0; i < SLIST_SIZE; ++i) {
 			if (cmpHashValue(nd->sList[i].sInfo.id, tmp) == 0)
 				return;
 			memcpy(sId, nd->sList[i].sInfo.id, SHA_DIGEST_LENGTH);
@@ -372,6 +345,8 @@ void stabilize() {
 	}
 
 	fixFingers();
+	buildSuccessorList();
+	printSuccList();
 	printDebug();
 }
 
@@ -402,18 +377,18 @@ void buildSuccessorList() {
 	uint16_t sPort = nd->sList[0].sInfo.port; // the successor
 
 	unsigned char ssId[SHA_DIGEST_LENGTH];
-	memset(ssId, 0, SHA_DIGEST_LENGTH); // the successor's successor
 	char ssIpAddr[IPADDR_SIZE]; // the successor's successor
 	uint16_t ssPort = 0; // the successor's successor
 
 	i = 1;
 	char mdString[SHA_DIGEST_LENGTH*2+1];
-	while (cmpHashValue(nd->ndInfo.id, sId) != 0) {
+	for (i = 0; i < SLIST_SIZE; ++i) {
 		hashToString(sId, mdString);
 		fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__, mdString , sIpAddr, (unsigned long) sPort);
 		memset(ssId, 0, SHA_DIGEST_LENGTH);
-		memset(ssIpAddr,0,15); 
+		memset(ssIpAddr, 0, IPADDR_SIZE); 
 		ssPort = 0;
+		
 		if (checkAlive(sIpAddr, sPort)) {
 			askSuccForSucc(sId, sIpAddr, sPort, ssId, ssIpAddr, &ssPort);
 		} else {
@@ -434,11 +409,15 @@ void buildSuccessorList() {
 		//sucessor's successor
 		memcpy(nd->sList[i].sInfo.id, ssId, SHA_DIGEST_LENGTH);
 		nd->sList[i].sInfo.port = ssPort;
-		strcpy(nd->sList[i++].sInfo.ipAddr, ssIpAddr);
+		strcpy(nd->sList[i].sInfo.ipAddr, ssIpAddr);
 
 		memcpy(sId, ssId, SHA_DIGEST_LENGTH);
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
+
+		if (cmpHashValue(nd->ndInfo.id, sId) == 0) {
+			break;
+		}
 	}
 }
 
@@ -574,6 +553,7 @@ void notify(struct NodeInfo pNodeInfo) {
  * Fix the finger table
  */
 void fixFingers() {
+fprintf(stderr, "[Fix Fingers Started]-----\n");
 	int i = 0;
 	unsigned char sId[SHA_DIGEST_LENGTH];
 	uint16_t sPort = 0;
@@ -610,6 +590,7 @@ void fixFingers() {
 		}
 	}
 #endif
+fprintf(stderr, "[Fix Fingers Ended]-----\n");
 	printFT();
 }
 
@@ -774,12 +755,15 @@ void printFT() {
 
 void printSuccList() {
 	int i = 0;
-	// for (i = 0 ; i < (int)pow(2, FT_SIZE); ++i) {
 	fprintf(stderr, "Successors: ");
-	for (i = 0; i < 100; ++i) {
+	char md[SHA_DIGEST_LENGTH*2+1];
+	char md2[SHA_DIGEST_LENGTH*2+1];
+	for (i = 0; i < SLIST_SIZE; ++i) {
+		hashToString(nd->sList[i].sInfo.id, md);
+		hashToString(nd->sList[i].info.id, md2);
 		if ((unsigned long)nd->sList[i].sInfo.id == 0)
 			break;
-		fprintf(stderr, "%lu ", (unsigned long)nd->sList[i].sInfo.id);
+		fprintf(stderr, "%s -> ", md2);
+		fprintf(stderr, "%s \n", md);
 	}
-	fprintf(stderr, "\n");
 }

@@ -221,7 +221,7 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_GET_PRED: // Req Predecessor
-			fprintf(stderr, "REQ_GET_PRED\n");				
+			fprintf(stderr, "Recieved: REQ_GET_PRED\n");				
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
 			getPredecesor(predId, ipAddr, &predPort);
@@ -231,7 +231,7 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_GET_SUCC:  // reply the successor
-			fprintf(stderr, "REQ_GET_SUCC\n");
+			fprintf(stderr, "Recieved: REQ_GET_SUCC\n");
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);	
 			getSuccessor(sId, ipAddr, &sPort);
@@ -241,12 +241,12 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_MODIFY_PRED:  //modify its predecessor
-			fprintf(stderr, "Modify \n");
+			fprintf(stderr, "Recieved: Modify \n");
 			modifyPred(sId, ipAddr, port);
 			break;
 
 		case REQ_CHECK_ALIVE:
-			fprintf(stderr, "REQ_CHECK_ALIVE\n");
+			fprintf(stderr, "Recieved: REQ_CHECK_ALIVE\n");
 			size = sizeof(char) * 2;
 			sendBuf = malloc(size);
 			createResPkt(sendBuf, NULL, NULL, NULL, 0, RES_CHECK_ALIVE);
@@ -269,7 +269,7 @@ void loopStablize() {
 
 	while (1) {
 		// sleep(0.5);
-		usleep(500 * 1000);
+		usleep(1000 * 1000);
 		stabilize();
 		// fixFingers();
 	}	
@@ -563,7 +563,7 @@ void sendReqSuccForSuccPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16
 	char* buf = malloc(size);
 	memset(buf, 0, size);
 
-	createReqPkt(buf, 0, sId, sIpAddr, sPort, REQ_GET_SUCC);
+	createReqPkt(buf, NULL, NULL, NULL, 0, REQ_GET_SUCC);
 	sendto(sockfd, buf, size, 0, (struct sockaddr*)&cliAddr, sizeof(cliAddr));
 
 	free(buf);
