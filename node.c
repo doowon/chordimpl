@@ -150,13 +150,6 @@ void listenServerTCPSocket() {
 			buf = malloc(size);
 			createResDataPkt(buf, dataSize, data, RES_GET_DATA);
 			write(sockfd, buf, size);
-int i = 0;
-fprintf(stderr, "[REQ_GET_DATA] ");
-for (i = 0; i < dataSize+4 ; ++i) {
-	fprintf(stderr, "%x ", buf[i]);
-}
-fprintf(stderr, "\n");
-
 			close(sockfd);
 			free(buf);
 			break;
@@ -674,12 +667,6 @@ int recvResDataPkt(int sockfd, unsigned char* data, int* dataSize) {
 		close(sockfd);
 		return ERROR;
 	}
-int i = 0;
-fprintf(stderr, "[RECVRESDATAPKT] ");
-for (i = 0; i < DATA_SIZE+4 ; ++i) {
-	fprintf(stderr, "%x ", buf[i]);
-}
-fprintf(stderr, "\n");
 	int pktType = parse(buf, NULL, NULL, NULL, 0, data, dataSize);
 	close(sockfd);
 	return pktType;
