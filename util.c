@@ -6,10 +6,62 @@
 
 #include "util.h"
 
-void hashSHA1(char* string, unsigned char* digest) {
-	assert(string); assert(digest);
-	memset(digest, 0, SHA_DIGEST_LENGTH);
+void mpzToByteArray(mpz_t value, unsigned char* ret) {
+	// char* str = mpz_get_str(NULL, 16, value);
+	// assert(strlen(str) == SHA_DIGEST_LENGTH*2);
+
+	// int i = 0;
+	// for (i = SHA_DIGEST_LENGTH*2 - 1; i >= 0 ; i--) {
+	// }
+	// free(str);
+	char str[SHA_DIGEST_LENGTH*2+1];
+	mpz_export(ret, NULL, 1, sizeof(char), 1, 0, value);
+	if (mpz_cmp_ui(value, 0) == 0) {
+		memset(ret, 0, SHA_DIGEST_LENGTH);
+		return;
+	}
+	int i = 0;
+	for (i = 0; i < SHA_DIGEST_LENGTH; ++i)
+		sprintf((char*)&str[i*2], "%02x", ret[i]);
+	str[i*2+1] = '\0';
+	// fprintf(stderr, "[mpzToByteArray] %s\n", str);
+	// printf("mpzToByteArray: %s\n", mpz_get_str(NULL, 16, value));
+}
+
+void ByteArrayToMpz(mpz_t value, unsigned char* ret) {
+	// mpz_import(value, SHA_DIGEST_LENGTH, 1, sizeof(ret[0]), 1, 0, ret);
+	char str[SHA_DIGEST_LENGTH*2+1];
+	hashToString(ret, str);
+	mpz_set_str(value, str, 16);
+}
+
+bool between(const mpz_t id, const mpz_t start, const mpz_t end) {
+
+	unsigned char maxValue[SHA_DIGEST_LENGTH] = {[0 ... SHA_DIGEST_LENGTH-1] = 0xFF};
+	mpz_t max; mpz_init(max);
+	mpz_import(max, SHA_DIGEST_LENGTH, 1, sizeof(maxValue[0]), 1, 0, maxValue);
+	mpz_t min; mpz_init(min);
+
+	if (mpz_cmp(start, end) < 0 && mpz_cmp(start, id) <= 0 
+		&& mpz_cmp(id, end) <= 0) {
+		return true;
+	} else if ((mpz_cmp(start, end) > 0) && 
+				((mpz_cmp(start, id) <= 0 && mpz_cmp(id, max) <= 0)
+				|| (mpz_cmp(min, id) <= 0 && mpz_cmp(id, end) <= 0))) {
+		return true;
+	} else if (mpz_cmp(start, end) == 0 && mpz_cmp(id, end) == 0) {
+		return true;
+	}
+
+	mpz_clear(max); mpz_clear(min);
+	return false;
+}
+
+void hashSHA1(char* string, char* mdString) {
+	assert(string); assert(mdString);
+	unsigned char digest[SHA_DIGEST_LENGTH] = {0x00,};
 	SHA1((unsigned char*) string, strlen(string), digest);
+	hashToString(digest, mdString);
 }
 
 void hashToString(unsigned char* digest, char* mdString) {
@@ -20,53 +72,6 @@ void hashToString(unsigned char* digest, char* mdString) {
 	mdString[i*2+1] = '\0';
 }
 
-void addValueToHash(unsigned char* digest, unsigned char* value, unsigned char* ret) {
-	assert(digest); assert(value); assert(ret);
-
-	int i = 0; bool carry = false;
-	for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
-		if (carry) {
-			ret[i] = digest[i] + value[i] + 0x01;
-			if ((unsigned int)(digest[i] + value[i] + 0x01) > 255) {
-				carry = true;
-			} else {
-				carry = false;
-			}
-		} else {
-			ret[i] = digest[i] + value[i];
-			if ((unsigned int)(digest[i] + value[i]) > 255) {
-				carry = true;
-			} else {
-				carry = false;
-			}
-		}
-	}
-}
-
-void power2(int i, unsigned char* ret) {
-	assert(ret); assert(i >= 0); assert(i < FT_SIZE);
-
-	int p = i / 8; // 8 bits
-	ret[SHA_DIGEST_LENGTH - 1 - p] = 0x01 << (i % 8);
-}
-
-/**
- * Compare Hash Value
- * @param  v1 [description]
- * @param  v2 [description]
- * @return    less than 0 if v2 is bigger, 0 if same, more than 0 if v1 is bigger
- */
-int cmpHashValue(const unsigned char* v1, const unsigned char* v2) {
-	assert(v1); assert(v2);
-
-	int i = 0;
-	for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-		if (v1[i] - v2[i]) {
-			return v1[i] - v2[i];
-		}
-	}
-	return 0;
-}
 
 /**
  * Compare function for the quicksort
@@ -78,3 +83,8 @@ int cmpfunc(const void* a, const void* b) {
 	return (*(int*)a - *(int*)b);
 }
 
+void freeStr(char* ptr) {
+	if (ptr != NULL) {
+		free(ptr);
+	}
+}

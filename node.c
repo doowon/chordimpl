@@ -49,7 +49,7 @@ int initNode(char* fileName, uint16_t port, int fTime, bool menu) {
 		join();
 
 	//create a thread of looping stablizing
-	err = pthread_create(&(tid[2]), NULL, (void*)&loopStablize, NULL);
+	err = pthread_create(&(tid[2]), NULL, (void*)&loopStabilize, NULL);
 	if (err != 0) {
 		printf("can't create a pthread of looping stablize\n");
 		abort();
@@ -118,8 +118,10 @@ void listenServerTCPSocket() {
 	char recvBuf[512];
 	int keySize = 0;
 	uint32_t keys[1024];
-	unsigned char sId[SHA_DIGEST_LENGTH];
-	unsigned char targetId[SHA_DIGEST_LENGTH];
+	mpz_t sId;
+	mpz_init(sId);
+	mpz_t targetId;
+	mpz_init(targetId);
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
 
@@ -164,6 +166,8 @@ void listenServerTCPSocket() {
 		}
 
 	}
+
+	mpz_clear(sId); mpz_clear(targetId);
 }
 
 /**
@@ -179,12 +183,13 @@ void listenServerUDPSocket() {
 	struct sockaddr_in cliAddr;
 	socklen_t len = 0;					// size of the client addr struct
 
-	unsigned char targetId[SHA_DIGEST_LENGTH];
+	mpz_t targetId; mpz_init(targetId);
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
-	unsigned char predId[SHA_DIGEST_LENGTH];
+	mpz_t predId; mpz_init(predId);
 	uint16_t predPort = 0;
-	unsigned char sId[SHA_DIGEST_LENGTH];
+
+	mpz_t sId; mpz_init(sId);
 	uint16_t sPort = 0;
 	int size = 0;
 
@@ -259,19 +264,20 @@ void listenServerUDPSocket() {
 			break;
 		}
 	}
+
+	mpz_clear(targetId); mpz_clear(predId); mpz_clear(sId);
 }
 
 /**
  * Periodically stablizing
  * @return [description]
  */
-void loopStablize() {
+void loopStabilize() {
 
 	while (1) {
 		// sleep(0.5);
 		usleep(1000 * 1000);
 		stabilize();
-		// fixFingers();
 	}	
 	pthread_exit(0); //exit
 }
@@ -297,8 +303,8 @@ int closeSocket(int socketfd) {
  * @param  buf [description]
  * @return     [description]
  */
-void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
-					char* ipAddr, uint16_t port, int pktType) {
+void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, 
+					uint16_t port, int pktType) {
 
 	int i = 0;
 
@@ -311,8 +317,12 @@ void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId,
 		buf[2] = 0x00;
 		buf[3] = 0x00;
 
-		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-			buf[i+4] = targetId[i] & 0xFF;
+		if (targetId != NULL) {
+			unsigned char targetIdStr[SHA_DIGEST_LENGTH];
+			mpzToByteArray(targetId, targetIdStr);
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				buf[i+4] = targetIdStr[i] & 0xFF;
+			}
 		}
 		break;
 
@@ -336,8 +346,12 @@ void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId,
 		buf[6] = (tmp_addr.sin_addr.s_addr >> 8*1) & 0xFF;
 		buf[7] =  tmp_addr.sin_addr.s_addr & 0xFF;			//IP Adr low
 		
-		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-			buf[i+8] = sId[i];
+		if (sId != NULL) {
+			unsigned char sIdStr[SHA_DIGEST_LENGTH];
+			mpzToByteArray(sId, sIdStr);
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				buf[i+8] = sIdStr[i];
+			}
 		}
 
 		break;
@@ -363,8 +377,8 @@ void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId,
  * @param  buf [description]
  * @return     [description]
  */
-void createResPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
-					char* ipAddr, uint16_t port, int pktType) {
+void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, 
+					uint16_t port, int pktType) {
 	int i = 0;
 
 	switch (pktType) {
@@ -385,10 +399,15 @@ void createResPkt(char* buf, unsigned char* targetId, unsigned char* sId,
 		buf[6] = (tmp_addr.sin_addr.s_addr >> 8*1) & 0xFF;
 		buf[7] =  tmp_addr.sin_addr.s_addr & 0xFF;			//IP Adr low
 		
-		//Succesor NODE ID
-		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-			buf[i+8] = sId[i];
+		// Succesor NODE ID
+		if (sId != NULL) {
+			unsigned char sIdStr[SHA_DIGEST_LENGTH];
+			mpzToByteArray(sId, sIdStr);
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				buf[i+8] = sIdStr[i];
+			}
 		}
+
 		break;
 	
 	case RES_CHECK_ALIVE:
@@ -442,9 +461,9 @@ void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int ty
  * @param  port     [description]
  * @return          packet type
  */
-int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr, 
+int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, 
 			uint16_t* port, uint32_t keys[], int* keySize) {
-	
+
 	if ((buf[0] & 0xFF) != 0xC0) {
 		fprintf(stderr, "Received packet does NOT have 0xC0\n");
 		return ERROR;
@@ -454,8 +473,12 @@ int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr
 	int i = 0;
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
-		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-			targetId[i] = buf[i+4];
+		if (targetId != NULL) {
+			unsigned char targetIdStr[SHA_DIGEST_LENGTH];
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				targetIdStr[i] = buf[i+4];
+			}
+			ByteArrayToMpz(targetId, targetIdStr);
 		}
 		break;
 	
@@ -468,9 +491,15 @@ int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr
 		uint32_t ip = (buf[4]&0xFF) << 8*3 | (buf[5]&0xFF) << 8*2 
 					| (buf[6]&0xFF) << 8 | (buf[7]&0xFF);
 		inet_ntop(AF_INET, &(ip), ipAddr, INET_ADDRSTRLEN);
-		for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-			sId[i] = buf[i+8];
+		
+		if (sId != NULL) {
+			unsigned char sIdStr[SHA_DIGEST_LENGTH];
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				sIdStr[i] = buf[i+8];
+			}
+			ByteArrayToMpz(sId, sIdStr);
 		}
+		
 		break;
 
 	case RES_GET_KEYS:
@@ -492,6 +521,7 @@ int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr
 	default:
 		break;
 	}
+
 	return pktType;
 }
 
@@ -503,8 +533,7 @@ int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr
  * @param  port     [description]
  * @return          [description]
  */
-void sendReqClosestFingerPkt(int sockfd, unsigned char* targetId, char* sIpAddr, 
-								uint16_t sPort) {
+void sendReqClosestFingerPkt(int sockfd, mpz_t targetId, char* sIpAddr, uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
@@ -528,7 +557,7 @@ void sendReqClosestFingerPkt(int sockfd, unsigned char* targetId, char* sIpAddr,
  * @param  sPort   Successor Port to be asked
  * @return         -1 if error, 0 if successful
  */
-void sendReqSuccForPredPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForPredPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
@@ -552,7 +581,7 @@ void sendReqSuccForPredPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16
  * @param  sPort   Successor Port to be asked
  * @return         -1 if error, 0 if successful
  */
-void sendReqSuccForSuccPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForSuccPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
 	cliAddr.sin_family = AF_INET;
@@ -579,8 +608,8 @@ void sendReqSuccForSuccPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16
  * @param  port    [description]
  * @return         -1 if error, 0 if success
  */
-void sendNotifyPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort,
-					unsigned char* id, char* ipAddr, uint16_t port) {
+void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
+					mpz_t id, char* ipAddr, uint16_t port) {
 
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
@@ -607,11 +636,11 @@ void sendNotifyPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort
  * @param  sPort   the successor node port
  * @return         -1 if failed, 0 if success
  */
-void sendReqSuccForKeyPkt(int sockfd, unsigned char* id, unsigned char* sId, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForKeyPkt(int sockfd, mpz_t id, mpz_t sId, char* sIpAddr, uint16_t sPort) {
 	int size = sizeof(char) * 8;
 	char* buf = malloc(size);
-	createReqPkt(buf, id, 0, NULL, 0, REQ_GET_KEYS);
-	writeToSocket(sockfd, buf, size);
+	// createReqPkt(buf, id, 0, NULL, 0, REQ_GET_KEYS);
+	// writeToSocket(sockfd, buf, size);
 	free(buf);
 }
 
@@ -640,7 +669,7 @@ void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port) {
  * @param  sPort    [description]
  * @return          [description]
  */
-int recvResPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t* sPort) {
+int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
 	char buf[128];
 	recvfrom(sockfd, buf, 128, 0, NULL, NULL);
 	int pktType = parse(buf, NULL, sId, sIpAddr, sPort, NULL, NULL);

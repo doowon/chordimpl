@@ -3,7 +3,7 @@ CFLAGS=-I. -Werror -Wall -DDEBUG
 
 chord: chord.o node.o main.o util.o
 	$(CC) -o chord chord.o node.o util.o main.o $(CFLAGS) \
-	-lm -lpthread -lssl -lcrypto
+	-lm -lpthread -lssl -lcrypto -lgmp
 
 util.o: util.c
 	$(CC) -c util.c $(CFLAGS)

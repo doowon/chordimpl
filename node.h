@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <math.h>
+#include <gmp.h>
 
 #define SHA_DIGEST_LENGTH 20
 #define DATA_SIZE 1024
@@ -38,13 +39,13 @@ struct _Node;
 typedef struct _Node Node;
 
 struct NodeInfo{
-	unsigned char id[SHA_DIGEST_LENGTH];
+	mpz_t id;
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port;
 };
 
 struct FingerTable{
-	unsigned char start[SHA_DIGEST_LENGTH]; 
+	mpz_t start;
 	struct NodeInfo sInfo;
 };
 struct Successor {
@@ -53,7 +54,7 @@ struct Successor {
 };
 
 struct KeyData {
-	unsigned char key[SHA_DIGEST_LENGTH];
+	mpz_t key;
 	unsigned char data[DATA_SIZE];			/// 1 Kbyte
 };
 
@@ -79,24 +80,22 @@ int initNode(char* fileName, uint16_t port, int fTime, bool menu);
 void initServerSocket(uint16_t port);
 void listenServerTCPSocket();
 void listenServerUDPSocket();
-void loopStablize();
+void loopStabilize();
 
-void createReqPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
-					char* ipAddr, uint16_t port, int pktType);
-void createResPkt(char* buf, unsigned char* targetId, unsigned char* sId, 
-					char* ipAddr, uint16_t port, int pktType);
+void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
+void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
 void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int type);
 
-int parse(char buf[], unsigned char* targetId,  unsigned char* sId, char* ipAddr, 
+int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, 
 			uint16_t* port, uint32_t keys[], int* keySize);
-void sendReqClosestFingerPkt(int sockfd, unsigned char* targetId, char* sIpAddr, uint16_t sPort);
-void sendReqSuccForPredPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort);
-void sendReqSuccForSuccPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort);
-void sendNotifyPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t sPort,
-					unsigned char* id, char* ipAddr, uint16_t port);
-void sendReqSuccForKeyPkt(int sockfd, unsigned char* id, unsigned char* sId, char* sIpAddr, uint16_t sPort);
+void sendReqClosestFingerPkt(int sockfd, mpz_t targetId, char* sIpAddr, uint16_t sPort);
+void sendReqSuccForPredPkt(int sockfd, char* sIpAddr, uint16_t sPort);
+void sendReqSuccForSuccPkt(int sockfd, char* sIpAddr, uint16_t sPort);
+void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
+					mpz_t id, char* ipAddr, uint16_t port);
+void sendReqSuccForKeyPkt(int sockfd, mpz_t id, mpz_t sId, char* sIpAddr, uint16_t sPort);
 void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port);
-int recvResPkt(int sockfd, unsigned char* sId, char* sIpAddr, uint16_t* sPort);
+int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort);
 
 int connectToServer(int* sockfd, char* ipAddr, uint16_t port);
 int readFromSocket(int sockfd, char* buf, int size);
