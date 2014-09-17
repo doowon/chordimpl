@@ -28,7 +28,6 @@
 #define DATA_SIZE 1024
 #define FT_SIZE 160
 #define IPADDR_SIZE 15
-#define NUM_KEYS 20
 #define SLIST_SIZE 3
 
 typedef int bool;
@@ -56,11 +55,12 @@ struct Successor {
 struct KeyData {
 	mpz_t key;
 	unsigned char data[DATA_SIZE];			/// 1 Kbyte
+	int dataSize;
 };
 
 struct _Node{
 	struct NodeInfo ndInfo;
-	struct KeyData keyData[NUM_KEYS];
+	struct KeyData keyData[SLIST_SIZE+1];
 	int keySize; 							/// the number of keys
 	struct NodeInfo predInfo;
 	struct FingerTable ft[FT_SIZE];
@@ -84,21 +84,20 @@ void loopStabilize();
 
 void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
 void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
-void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int type);
+void createResDataPkt(char* buf, int dataSize, unsigned char* data, int pktType);
 
-int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, 
-			uint16_t* port, uint32_t keys[], int* keySize);
+int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port, 
+			unsigned char* data, int* dataSize);
 void sendReqClosestFingerPkt(int sockfd, mpz_t targetId, char* sIpAddr, uint16_t sPort);
 void sendReqSuccForPredPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendReqSuccForSuccPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
 					mpz_t id, char* ipAddr, uint16_t port);
-void sendReqSuccForKeyPkt(int sockfd, mpz_t id, mpz_t sId, char* sIpAddr, uint16_t sPort);
+void sendReqSuccForDataPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port);
+int recvResDataPkt(int sockfd, unsigned char* data, int* dataSize);
 int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort);
 
 int connectToServer(int* sockfd, char* ipAddr, uint16_t port);
-int readFromSocket(int sockfd, char* buf, int size);
-int writeToSocket(int sockfd, char* buf, int size);
 void printMenu();
 #endif

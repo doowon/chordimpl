@@ -14,18 +14,11 @@ void mpzToByteArray(mpz_t value, unsigned char* ret) {
 	// for (i = SHA_DIGEST_LENGTH*2 - 1; i >= 0 ; i--) {
 	// }
 	// free(str);
-	char str[SHA_DIGEST_LENGTH*2+1];
-	mpz_export(ret, NULL, 1, sizeof(char), 1, 0, value);
 	if (mpz_cmp_ui(value, 0) == 0) {
 		memset(ret, 0, SHA_DIGEST_LENGTH);
 		return;
 	}
-	int i = 0;
-	for (i = 0; i < SHA_DIGEST_LENGTH; ++i)
-		sprintf((char*)&str[i*2], "%02x", ret[i]);
-	str[i*2+1] = '\0';
-	// fprintf(stderr, "[mpzToByteArray] %s\n", str);
-	// printf("mpzToByteArray: %s\n", mpz_get_str(NULL, 16, value));
+	mpz_export(ret, NULL, 1, sizeof(char), 1, 0, value);
 }
 
 void ByteArrayToMpz(mpz_t value, unsigned char* ret) {

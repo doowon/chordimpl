@@ -34,6 +34,7 @@ void initChord(char* data, int dataSize, uint16_t port) {
 	printf("%s\n", mpz_get_str(NULL, 16, nd->ndInfo.id));
 	mpz_set(nd->keyData[0].key, nd->ndInfo.id);
 	memcpy(nd->keyData[0].data, data, dataSize);
+	nd->keyData[0].dataSize = dataSize;
 	strcpy(nd->ndInfo.ipAddr, DEFAULT_IP_ADDR);
 	nd->ndInfo.port = port;
 	nd->keySize = 0;		//initialize the number of keys
@@ -251,7 +252,6 @@ void stabilize() {
 				break;
 		}
 	}
-	printDebug();
 
 	//ask succesor for its predecessor
 	mpz_t predId; mpz_init(predId);
@@ -263,44 +263,24 @@ void stabilize() {
 	char* str; char* str2;
 	str = mpz_get_str(NULL, 16, sId);
 	str2 = mpz_get_str(NULL, 16, predId);
-	fprintf(stderr, "[Stabilzing] SID: %s 's PredID1: %s PredPort: %lu\n", str, str2, (unsigned long) predPort);
+	// fprintf(stderr, "[Stabilzing] SID: %s 's PredID1: %s PredPort: %lu\n", str, str2, (unsigned long) predPort);
 
 	if (mpz_cmp(nd->ndInfo.id, predId) != 0) {
 		//this node is not just joining & connect
 		if (nd->predInfo.port != 0 && checkAlive(predIpAddr, predPort)) { 
-			fprintf(stderr, "[Stabilzing2] PredID: %s PredPort: %lu\n", str2, (unsigned long) str);
+			// fprintf(stderr, "[Stabilzing2] PredID: %s PredPort: %lu\n", str2, (unsigned long) str);
 			mpz_set(nd->ft[0].sInfo.id, predId);
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
 			nd->ft[0].sInfo.port = predPort;
 		}
 
 		notify(nd->ndInfo);
-
-#if 0
-		/* keys transfer */
-		// ask the successor's keys
-		uint32_t id = nd->ndInfo.id;
-		uint32_t keys[NUM_KEYS];
-		int keySize = 0;
-
-		if (sId != nd->ndInfo.id) {
-			n = askSuccForKeys(id, sId, sIpAddr, sPort, keys, &keySize);
-			int i = 0;
-			int size = nd->keySize;
-			for (i = 0; i < keySize; ++i) {
-				nd->key[size++] = keys[i];
-			}
-			nd->keySize += keySize;
-		}
-		// sort key array
-		qsort(nd->key, nd->keySize, sizeof(int), cmpfunc);
-#endif
 	}
 
 	fixFingers();
 	buildSuccessorList();
 	printSuccList();
-	printDebug();
+	// printDebug();
 
 	freeStr(str); freeStr(str2);
 	mpz_clear(sId); mpz_clear(tmp); mpz_clear(predId);
@@ -326,23 +306,25 @@ void buildSuccessorList() {
 	cpyNodeInfo(&(nd->ndInfo), &(nd->sList[0].info));
 	cpyNodeInfo(&(nd->ft[0].sInfo), &(nd->sList[0].sInfo));
 
-	mpz_t sId;
-	mpz_init(sId);
+	mpz_t sId; mpz_init(sId);
 	mpz_set(sId, nd->sList[0].sInfo.id); // the successor
 	char sIpAddr[IPADDR_SIZE]; // the successor
 	strcpy(sIpAddr, nd->sList[0].sInfo.ipAddr);
 	uint16_t sPort = nd->sList[0].sInfo.port; // the successor
 
-	mpz_t ssId;
-	mpz_init(ssId);
+	mpz_t ssId; mpz_init(ssId);
 	char ssIpAddr[IPADDR_SIZE]; // the successor's successor
 	uint16_t ssPort = 0; // the successor's successor
+
+	if (mpz_cmp(nd->ndInfo.id, sId) == 0) {
+		return;
+	}
 
 	i = 1;
 	char* str;
 	for (i = 0; i < SLIST_SIZE; ++i) {
 		str = mpz_get_str(NULL, 16, sId);
-		fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__, str , sIpAddr, (unsigned long) sPort);
+		// fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__, str , sIpAddr, (unsigned long) sPort);
 		mpz_init(ssId);
 		memset(ssIpAddr, 0, IPADDR_SIZE); 
 		ssPort = 0;
@@ -354,7 +336,7 @@ void buildSuccessorList() {
 			sPort = nd->sList[i-1].info.port;
 			strcpy(sIpAddr, nd->sList[i-1].info.ipAddr);
 			str = mpz_get_str(NULL, 16, sId);
-			fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__,  str, sIpAddr, (unsigned long) sPort);
+			// fprintf(stderr, "%i %s %s %s %lu\n", __LINE__, __FILE__,  str, sIpAddr, (unsigned long) sPort);
 			usleep(100 * 1000);
 			continue;
 		}
@@ -369,6 +351,10 @@ void buildSuccessorList() {
 		nd->sList[i].sInfo.port = ssPort;
 		strcpy(nd->sList[i].sInfo.ipAddr, ssIpAddr);
 
+		//ask for data
+		askSuccForData(nd->sList[i].info.ipAddr, nd->sList[i].info.port+2000,
+						nd->keyData[i+1].data,  &nd->keyData[i+1].dataSize);
+
 		mpz_set(sId, ssId);
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
@@ -381,25 +367,18 @@ void buildSuccessorList() {
 	mpz_clear(sId); mpz_clear(ssId);
 }
 
+void askSuccForData(char* sIpAddr, uint16_t sPort, unsigned char* data, int* dataSize) {
+	int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sockfd == -1) {
+		fprintf(stderr, "Socket opening error\n");
+		close(sockfd);
+		return;
+	}
+	sendReqSuccForDataPkt(sockfd, sIpAddr, sPort);
+	recvResDataPkt(sockfd, data, dataSize);
 
-
-#if 0
-/**
- * Ask the successor for keys
- * @param  id      [description]
- * @param  sId     [description]
- * @param  sIpAddr [description]
- * @param  sPort   [description]
- * @param  keys    the keys returned
- * @param  keySize     the number of keys returned
- * @return         [description]
- */
-void askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr, 
-					uint16_t sPort, uint32_t keys[], int* keySize) {
-	sendReqSuccForKeyPkt(id, sId, sIpAddr, sPort);
-	recvKeyTransPkt(keys, keySize);
+	close(sockfd);
 }
-#endif
 
 /**
  * Ask the successor for the successor's successor
@@ -448,7 +427,7 @@ void askSuccForPred(mpz_t sId, char* sIpAddr, uint16_t sPort,
 }
 
 bool checkAlive(char* ipAddr, uint16_t port) {
-	fprintf(stderr, "[checkAlive] start\n");
+	// fprintf(stderr, "[checkAlive] start\n");
 	struct timeval tv;
 	tv.tv_sec = 0;
 	tv.tv_usec = 500000;
@@ -467,7 +446,7 @@ bool checkAlive(char* ipAddr, uint16_t port) {
 	}
 	close(sockfd);
 	freeStr(buf);
-	fprintf(stderr, "[checkAlive] end\n");
+	// fprintf(stderr, "[checkAlive] end\n");
 	return true;
 }
 
@@ -501,7 +480,7 @@ void notify(struct NodeInfo pNodeInfo) {
 	if ((mpz_cmp(pId, tmp) == 0) || mpz_cmp(nd->ndInfo.id, pNodeInfo.id) == 0) {
 		str = mpz_get_str(NULL, 16, sId);
 		str2 = mpz_get_str(NULL, 16, nd->ndInfo.id);
-		fprintf(stderr, "[Notify] sID %s 's successor would be changed to %s\n", str, str2);
+		// fprintf(stderr, "[Notify] sID %s 's successor would be changed to %s\n", str, str2);
 		sendNotifyPkt(sockfd, sIpAddr, sPort, nd->ndInfo.id, nd->ndInfo.ipAddr, nd->ndInfo.port);
 	}
 
@@ -515,7 +494,7 @@ void notify(struct NodeInfo pNodeInfo) {
  * Fix the finger table
  */
 void fixFingers() {
-fprintf(stderr, "[Fix Fingers Started]-----\n");
+// fprintf(stderr, "[Fix Fingers Started]-----\n");
 	int i = 0;
 	mpz_t sId; mpz_init(sId);
 	uint16_t sPort = 0;
@@ -554,9 +533,9 @@ fprintf(stderr, "[Fix Fingers Started]-----\n");
 	}
 #endif
 
-	printFT();
+	// printFT();
 	mpz_clear(sId); mpz_clear(targetId);
-fprintf(stderr, "[Fix Fingers Ended]-----\n");
+// fprintf(stderr, "[Fix Fingers Ended]-----\n");
 }
 
 /**
@@ -583,39 +562,10 @@ void getSuccessor(mpz_t id, char* ipAddr, uint16_t* port) {
 	*port = nd->ft[0].sInfo.port;
 }
 
-/**
- * Get keys to be moved to the request node
- * @param id   the request node ID
- * @param keys keys to be moved to the request node
- * @param num  the number of the returned keys 
- */
 
-void getKeys(mpz_t id, uint32_t keys[], int* num) {
-#if 0
-	int i = 0; int j = 0;
-	int size = nd->keySize;
-	for (i = 0; i < size; ++i) {
-		if (id >= nd->key[i] && nd->key[i] != nd->ndInfo.id) {
-			keys[j++] = nd->key[i];
-		}
-	}
-	if (j == 0) {
-		return;
-	}
-
-	/* TODO: 
-	* Make it sure that the keys transferred
-	* because keys are removed here, but not transfer to predecessor
-	*/
-	// remove keys from list
-	int k = 0;
-	for (i = j; i < size; ++i) {
-		nd->key[k++] = nd->key[i];
-	} 
-	
-	nd->keySize = size - j;
-	*num = j;
-#endif
+int getData(unsigned char* data) {
+	memcpy(data, nd->keyData[0].data, nd->keyData[0].dataSize);
+	return nd->keyData[0].dataSize;
 }
 
 #if 0
@@ -726,9 +676,7 @@ void printSuccList() {
 	for (i = 0; i < SLIST_SIZE; ++i) {
 		md = mpz_get_str(NULL, 16, nd->sList[i].sInfo.id);
 		md2 = mpz_get_str(NULL, 16, nd->sList[i].info.id);
-		if ((unsigned long)nd->sList[i].sInfo.id == 0)
-			break;
-		fprintf(stderr, "%s -> ", md2);
+		fprintf(stderr, "%s (data: %s)-> ", md2, nd->keyData[i+1].data);
 		fprintf(stderr, "%s \n", md);
 	}
 	freeStr(md); freeStr(md2);

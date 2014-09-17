@@ -106,7 +106,7 @@ void initServerSocket(uint16_t port) {
 	servAddrTCP.sin_port = htons(port + 2000);
 
 	bind(connfdUDP, (struct sockaddr*)&servAddr, sizeof(servAddr));
-	// bind(connfdTCP, (struct sockaddr*)&servAddrTCP, sizeof(servAddrTCP));
+	bind(connfdTCP, (struct sockaddr*)&servAddrTCP, sizeof(servAddrTCP));
 
 }
 
@@ -114,22 +114,23 @@ void listenServerTCPSocket() {
 	fprintf(stderr, "server: TCP listening... at\n");
 
 	listen(connfdTCP, 5);
+	
 	int sockfd;
 	char recvBuf[512];
-	int keySize = 0;
-	uint32_t keys[1024];
-	mpz_t sId;
-	mpz_init(sId);
-	mpz_t targetId;
-	mpz_init(targetId);
+	mpz_t sId; mpz_init(sId);
+	mpz_t targetId; mpz_init(targetId);
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
+	unsigned char data[DATA_SIZE];
+	int dataSize = 0;
+	int size = 0;
+	char* buf = NULL;
 
 	while (true) {
 		sockfd = accept(connfdTCP, (struct sockaddr*)NULL, NULL);
 
 		//receive messages
-		if (readFromSocket(sockfd, recvBuf, 1024) < 0) {
+		if (read(sockfd, recvBuf, 1024) < 0) {
 			close(sockfd);
 		}
 
@@ -142,23 +143,24 @@ void listenServerTCPSocket() {
 			close(sockfd);
 			break;
 		
-		case REQ_GET_KEYS: // keys removed and be transfered
-			getKeys(targetId, keys, &keySize); //get keys from local
-			int size = sizeof(char)*keySize*4 + sizeof(char)*4;
-			char* bufKeys = malloc(size);
-			createKeyTransPkt(bufKeys, size, keys, keySize, RES_GET_KEYS);
-			writeToSocket(sockfd, bufKeys, size);
+		case REQ_GET_DATA: // keys removed and be transfered
+			memset(data, 0, DATA_SIZE);
+			dataSize = getData(data);
+			size = sizeof(char)*4 + sizeof(char)*dataSize;
+			buf = malloc(size);
+			createResDataPkt(buf, dataSize, data, RES_GET_DATA);
+			write(sockfd, buf, size);
+int i = 0;
+fprintf(stderr, "[REQ_GET_DATA] ");
+for (i = 0; i < dataSize+4 ; ++i) {
+	fprintf(stderr, "%x ", buf[i]);
+}
+fprintf(stderr, "\n");
+
 			close(sockfd);
-			free(bufKeys);
+			free(buf);
 			break;
-/*		
-		case RES_GET_KEYS: //received keys from a node leaving
-			keySize = 0;
-			recvKeyTransPkt(keys, &keySize);
-			setKeys(keys, keySize);
-			close(sockfd);
-			break;
-*/		
+
 		default:
 			fprintf(stderr, "server: default\n");
 			close(sockfd);
@@ -226,7 +228,7 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_GET_PRED: // Req Predecessor
-			fprintf(stderr, "Recieved: REQ_GET_PRED\n");				
+			// fprintf(stderr, "Recieved: REQ_GET_PRED\n");			
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
 			getPredecesor(predId, ipAddr, &predPort);
@@ -236,7 +238,7 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_GET_SUCC:  // reply the successor
-			fprintf(stderr, "Recieved: REQ_GET_SUCC\n");
+			// fprintf(stderr, "Recieved: REQ_GET_SUCC\n");
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);	
 			getSuccessor(sId, ipAddr, &sPort);
@@ -246,12 +248,12 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_MODIFY_PRED:  //modify its predecessor
-			fprintf(stderr, "Recieved: Modify \n");
+			// fprintf(stderr, "Recieved: Modify \n");
 			modifyPred(sId, ipAddr, port);
 			break;
 
 		case REQ_CHECK_ALIVE:
-			fprintf(stderr, "Recieved: REQ_CHECK_ALIVE\n");
+			// fprintf(stderr, "Recieved: REQ_CHECK_ALIVE\n");
 			size = sizeof(char) * 2;
 			sendBuf = malloc(size);
 			createResPkt(sendBuf, NULL, NULL, NULL, 0, RES_CHECK_ALIVE);
@@ -282,17 +284,6 @@ void loopStabilize() {
 	pthread_exit(0); //exit
 }
 
-#if 0
-/**
- * Close the socket
- * @param  socketfd File descriptor
- * @return          [description]
- */
-int closeSocket(int socketfd) {
-	return close(socketfd);
-}
-#endif
-
 /**
  * Version: 1 byte - 0xC0
  * Request: 1 byte - 0x0
@@ -310,7 +301,6 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
-	case REQ_GET_KEYS:
 		buf[0] = 0xC0;
 		buf[1] = pktType & 0xFF;
 
@@ -357,6 +347,11 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		break;
 
 	case REQ_CHECK_ALIVE:
+		buf[0] = 0xC0;
+		buf[1] = pktType & 0xFF;
+		break;
+
+	case REQ_GET_DATA:
 		buf[0] = 0xC0;
 		buf[1] = pktType & 0xFF;
 		break;
@@ -428,27 +423,20 @@ void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
  * @param keySize  [description]
  * @param type [description]
  */
-void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int type) {
-/* FIXME: Num should be 4bytes, but in my protocol, 
- * only 2bytes are allowed now so that the total number of
- * keys to be transfered is 2^16. 
- */
-	if (size < 0) {
+void createResDataPkt(char* buf, int dataSize, unsigned char* data, int pktType) {
+	if (dataSize < 0) {
 		fprintf(stderr, "Size should be bigger than 0\n");
 	}
 
 	buf[0] = 0xC0;
-	buf[1] = type & 0xFF;
+	buf[1] = pktType & 0xFF;
 
-	buf[2] = keySize >> 8;     // NUM HIGH
-	buf[3] = keySize & 0xFF;   // NUM LOW
+	buf[2] = dataSize >> 8;     // NUM HIGH
+	buf[3] = dataSize & 0xFF;   // NUM LOW
 
-	int i = 0; int j = 4;
-	for (i = 0; i < keySize; ++i) {
-		buf[j++] = (keys[i] >> 8*3) & 0xFF; 
-		buf[j++] = (keys[i] >> 8*2) & 0xFF;
-		buf[j++] = (keys[i] >> 8*1) & 0xFF;
-		buf[j++] =  keys[i] & 0xFF;
+	int i = 0;
+	for (i = 0; i < dataSize; ++i) {
+		buf[i+4] = data[i]; 
 	}
 }
 
@@ -461,8 +449,8 @@ void createKeyTransPkt(char* buf, int size, uint32_t keys[], int keySize, int ty
  * @param  port     [description]
  * @return          packet type
  */
-int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, 
-			uint16_t* port, uint32_t keys[], int* keySize) {
+int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port, 
+			unsigned char* data, int* dataSize) {
 
 	if ((buf[0] & 0xFF) != 0xC0) {
 		fprintf(stderr, "Received packet does NOT have 0xC0\n");
@@ -502,20 +490,11 @@ int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr,
 		
 		break;
 
-	case RES_GET_KEYS:
-		*keySize = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
-		int i = 0;
-		int size = sizeof(char)*4;
-		char* buf2 = malloc(size);
-		for (i = 0; i < *keySize; ++i) {
-			recvfrom(connfdTCP, buf2, size, 0, NULL, NULL);
-			uint32_t tmp = (buf2[0]&0xFF) << 8*3;
-			tmp |= (buf2[1]&0xFF) << 8*2;
-			tmp |= (buf2[2]&0xFF) << 8;
-			tmp |= (buf2[3]&0xFF);
-			keys[i] = tmp;
+	case RES_GET_DATA:
+		*dataSize = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
+		for (i = 0; i < *dataSize; ++i) {
+			data[i] = buf[i+4];
 		}
-		free(buf2);
 		break;
 
 	default:
@@ -627,20 +606,25 @@ void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
 	free(buf);
 }
 
-/**
- * Send a request packet to the successor for keys which should be moved to
- * the request node
- * @param  id      the request node ID
- * @param  sId     the successor node ID
- * @param  sIpAddr the successor node IP Addr
- * @param  sPort   the successor node port
- * @return         -1 if failed, 0 if success
- */
-void sendReqSuccForKeyPkt(int sockfd, mpz_t id, mpz_t sId, char* sIpAddr, uint16_t sPort) {
-	int size = sizeof(char) * 8;
+void sendReqSuccForDataPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
+	
+	struct sockaddr_in servAddr;
+	memset(&servAddr, 0, sizeof(servAddr));
+	servAddr.sin_family = AF_INET;
+	servAddr.sin_port = htons(sPort);
+	if(inet_pton(AF_INET, sIpAddr, &servAddr.sin_addr) < 0) {
+		fprintf(stderr, "converting %s from a string error occured\n", sIpAddr);
+		return;
+	}
+	if(connect(sockfd, (struct sockaddr*)&servAddr, sizeof(servAddr))<0){
+		fprintf(stderr, "%d %s Connection failed %s: %lu, %s\n", __LINE__, __FILE__, sIpAddr, (unsigned long) sPort, strerror(errno));
+		return;
+	}
+
+	int size = sizeof(char) * 2;
 	char* buf = malloc(size);
-	// createReqPkt(buf, id, 0, NULL, 0, REQ_GET_KEYS);
-	// writeToSocket(sockfd, buf, size);
+	createReqPkt(buf, NULL, NULL, NULL, 0, REQ_GET_DATA);
+	write(sockfd, buf, size);
 	free(buf);
 }
 
@@ -677,26 +661,31 @@ int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
 }
 
 
-#if 0
 /**
  * Receive a key-transfer packet and parse it
  * @param  keys 	Keys
  * @param  keySize  The number of keys
  * @return      	-1 if error, 6 or 7 if successful
  */
-int recvResKeyPkt(int sockfd, uint32_t keys[], int* keySize) {
-	int n = readFromSocket(sockfd, recvBufCli, BUF_SIZE);
+int recvResDataPkt(int sockfd, unsigned char* data, int* dataSize) {
+	char buf[DATA_SIZE+4];
+	int n = read(sockfd, buf, DATA_SIZE+4);
 	if(n < 0) {
-		// printf("read error");
-		closeSocket(sockfd);
-		return -1;
-		// abort();
+		close(sockfd);
+		return ERROR;
 	}
-	int ret = parse(recvBufCli, &targetId, sId, sIpAddr, sPort, keys, keySize);
+int i = 0;
+fprintf(stderr, "[RECVRESDATAPKT] ");
+for (i = 0; i < DATA_SIZE+4 ; ++i) {
+	fprintf(stderr, "%x ", buf[i]);
+}
+fprintf(stderr, "\n");
+	int pktType = parse(buf, NULL, NULL, NULL, 0, data, dataSize);
 	close(sockfd);
-	return ret;
+	return pktType;
 }
 
+#if 0
 /**
  * Send a Key-transfer packet
  * @param  sId     [description]
@@ -752,29 +741,6 @@ int connectToServer(int* sockfd, char* ipAddr, uint16_t port) {
 	return 0;
 }
 
-/**
-* Read message from socket
-* @param sockfd [description]
-* @param buf [description]
-* @param size [description]
-* @return the length of received message
-*/
-int readFromSocket(int sockfd, char* buf, int size) {
-	int n = read(sockfd, buf, size);
-	return n;
-}
-
-/**
-* Write message to socket
-* @param sockfd File descriptor
-* @param buf Buffer to write
-* @param size The size of message to be sent
-* @return 0 if success
-*/
-int writeToSocket(int sockfd, char* buf, int size) {
-	write(sockfd, buf, size);
-	return 0;
-}
 
 /**
  * Print menu

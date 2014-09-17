@@ -33,13 +33,12 @@ void askSuccForPred(mpz_t sId, char* sIpAddr, uint16_t sPort,
 					mpz_t predId, char* predIpAddr, uint16_t* predPort);
 void askSuccForSucc(mpz_t sId, char* sIpAddr, uint16_t sPort,
 					mpz_t ssId, char* ssIpAddr, uint16_t* ssPort);
-void askSuccForKeys(uint32_t id, uint32_t sId, char* sIpAddr, 
-					uint16_t sPort, uint32_t keys[], int *keySize);
+void askSuccForData(char* sIpAddr, uint16_t sPort, unsigned char* data, int* dataSize);
 bool checkAlive(char* ipAddr, uint16_t port);
 
 void getPredecesor(mpz_t id, char* ipAddr, uint16_t* port);
 void getSuccessor(mpz_t id, char* ipAddr, uint16_t* port);
-void getKeys(mpz_t id, uint32_t keys[], int* num);
+int getData(unsigned char* data) ;
 void setKeys(uint32_t keys[], int keySize);
 
 void stabilize();
