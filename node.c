@@ -13,65 +13,98 @@
  * @param  nodeId     [description]
  * @return            [description]
  */
-int initNode(char* fileName, uint16_t port, int fTime, bool menu) {
-	int err = -1;
-	fp = fopen(fileName, "r+");
+int initNode(char* idFile, char* keysFile, char* lkupFile, uint16_t port, int fTime, bool menu) {
+	// For Simulation start
+	ssize_t read; size_t len;
+	char* line = NULL;
+	simSize = 0;
+	mpz_t id; mpz_init(id);
+
+	FILE* fp = fopen(lkupFile, "r+");
 	if (fp == NULL) {
-		fprintf(stderr, "Can't open data file, %s\n", fileName);
-		abort();
-	}
-	fseek(fp, 0L, SEEK_END);
-	int fileSize = ftell(fp);
-	fseek(fp, 0L, SEEK_SET);
-	char* data = malloc(sizeof(char) * fileSize);
-	if (fread(data, 1, fileSize, fp) != fileSize) {
-		fprintf(stderr, "Reading error, %s\n", fileName);
-		abort();
+		fprintf(stderr, "%d Can't open data file, %s\n", __LINE__, lkupFile);
+	} else {
+		while ((read = getline(&line, &len, fp)) != -1) {
+			mpz_init(simKeys[simSize]);
+			if (mpz_set_str(simKeys[simSize++], line, 16) < 0) {
+				fprintf(stderr, "%s %d %s \n", __FILE__, __LINE__, "can't assign hex to mpz_t");
+				abort();
+			}
+		}
+		fclose(fp);
 	}
 
-	initChord(data, fileSize, port);
+	FILE* idfp = fopen(idFile, "r+");
+	if (idfp == NULL) {
+		fprintf(stderr, "%d Can't open data file, %s\n", __LINE__, idFile);
+		abort();
+	} else {
+		while ((read = getline(&line, &len, idfp)) != -1) {
+			if (mpz_set_str(id, line, 16) < 0) {
+				fprintf(stderr, "%s %d %s \n", __FILE__, __LINE__, "can't assign hex to mpz_t");
+				abort();
+			}
+		}
+		fclose(idfp);
+	}
+
+	FILE* keysfp = fopen(keysFile, "r+");
+	if (keysfp == NULL) {
+		fprintf(stderr, "%d Can't open data file, %s\n", __LINE__, keysFile);
+	} 
+	// Simulation end
+
+	initChord(id, keysfp, port);
+	fprintf(stderr, "init done\n");
+	fflush(stderr);
 	initServerSocket(port);
 
 	//create a thread of server socket 
-	err = pthread_create(&(tid[0]), NULL, (void*)&listenServerUDPSocket, NULL);
+	int err = pthread_create(&(tid[0]), NULL, (void*)&listenServerUDPSocket, NULL);
 	if (err != 0) {
 		fprintf(stderr, "can't create a pthread of a server socket\n");
 		abort();
 	}
 
-	err = pthread_create(&(tid[1]), NULL, (void*)&listenServerTCPSocket, NULL);
-	if (err != 0) {
-		fprintf(stderr, "can't create a pthread of a server socket\n");
-		abort();
-	}
+	// err = pthread_create(&(tid[1]), NULL, (void*)&listenServerTCPSocket, NULL);
+	// if (err != 0) {
+	// 	fprintf(stderr, "can't create a pthread of a server socket\n");
+	// 	abort();
+	// }
 	
-	if (port >= 6001)
-		join();
-
 	//create a thread of looping stablizing
-	err = pthread_create(&(tid[2]), NULL, (void*)&loopStabilize, NULL);
+	err = pthread_create(&(tid[1]), NULL, (void*)&loopStabilize, NULL);
 	if (err != 0) {
 		printf("can't create a pthread of looping stablize\n");
 		abort();
 	}
 
+	err = pthread_create(&(tid[2]), NULL, (void*)&sim_pathLength, NULL);
+	if (err != 0) {
+		printf("can't create a pthread of sim_pathLength\n");
+		abort();
+	}
+
+	if (port > DEFAULT_PORT)
+		join();
+
+/*
 	if (menu) {
 		printMenu();
-
 	}
-	
+*/	
 	if (fTime > 0) {
 		sleep(fTime);
 	} else {
 		pthread_join(tid[0],NULL);
 		pthread_join(tid[1],NULL);
 		pthread_join(tid[2],NULL);
+		// pthread_join(tid[3],NULL);
 	}
 	
 	pthread_mutex_destroy(&lock);
 	
-	free(data);
-	fclose(fp);
+	mpz_clear(id);
 
 	return 0;
 }
@@ -83,10 +116,10 @@ int initNode(char* fileName, uint16_t port, int fTime, bool menu) {
  */
 void initServerSocket(uint16_t port) {
 	struct sockaddr_in servAddr;
-	struct sockaddr_in servAddrTCP;
+	// struct sockaddr_in servAddrTCP;
 
 	connfdUDP = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	connfdTCP = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	// connfdTCP = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	
 	/* Immediate bind port without waiting until OS releases*/
 	/*
@@ -100,14 +133,15 @@ void initServerSocket(uint16_t port) {
 	servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servAddr.sin_port = htons(port);
 
-	memset(&servAddrTCP, 0, sizeof(servAddrTCP));
-	servAddrTCP.sin_family = AF_INET;
-	servAddrTCP.sin_addr.s_addr = htonl(INADDR_ANY);
-	servAddrTCP.sin_port = htons(port + 2000);
+	// memset(&servAddrTCP, 0, sizeof(servAddrTCP));
+	// servAddrTCP.sin_family = AF_INET;
+	// servAddrTCP.sin_addr.s_addr = htonl(INADDR_ANY);
+	// servAddrTCP.sin_port = htons(port + 2000);
 
 	bind(connfdUDP, (struct sockaddr*)&servAddr, sizeof(servAddr));
-	bind(connfdTCP, (struct sockaddr*)&servAddrTCP, sizeof(servAddrTCP));
-
+	// bind(connfdTCP, (struct sockaddr*)&servAddrTCP, sizeof(servAddrTCP));
+	fprintf(stderr, "init serversocket done\n");
+	fflush(stderr);
 }
 
 void listenServerTCPSocket() {	
@@ -121,10 +155,9 @@ void listenServerTCPSocket() {
 	mpz_t targetId; mpz_init(targetId);
 	char ipAddr[IPADDR_SIZE];
 	uint16_t port = 0;
-	unsigned char data[DATA_SIZE];
-	int dataSize = 0;
-	int size = 0;
-	char* buf = NULL;
+	// int dataSize = 0;
+	// int size = 0;
+	// char* buf = NULL;
 
 	while (true) {
 		sockfd = accept(connfdTCP, (struct sockaddr*)NULL, NULL);
@@ -142,16 +175,36 @@ void listenServerTCPSocket() {
 			fprintf(stderr, "server: error occured\n");
 			close(sockfd);
 			break;
-		
-		case REQ_GET_DATA: // keys removed and be transfered
-			memset(data, 0, DATA_SIZE);
-			dataSize = getData(data);
-			size = sizeof(char)*4 + sizeof(char)*dataSize;
+#if 0
+		case REQ_GET_KEY: // keys removed and be transfered
+			mpz_t keySize; mpz_init(keySize);
+			mpz_t keys[1024];
+			for (i = 0; i < 1024; ++i) {
+				mpz_init(keys[i]);
+			}
+
+			char* data[DATA_SIZE];
+			getKeys(sId, keys, keySize, data);
+			size = sizeof(char)*4 + sizeof(char)*keySize;
 			buf = malloc(size);
-			createResDataPkt(buf, dataSize, data, RES_GET_DATA);
+
+			//sending keySize
+			createResPkt(buf, NULL, NULL, NULL, 0, keySize, RES_GET_KEY_SIZE);
+			write(sockf, buf, size);
+			free(buf);
+			//sending key + data
+			buf = malloc(size);
+			createResKeyPkt(buf, keySize, data, RES_GET_KEY_SIZE);
 			write(sockfd, buf, size);
 			close(sockfd);
 			free(buf);
+			for (i = 0; i < 1024; ++i) {
+				free(data[i]);
+			}
+			break;
+#endif
+		case START_SIMULATION:
+			// pathLength();
 			break;
 
 		default:
@@ -159,7 +212,6 @@ void listenServerTCPSocket() {
 			close(sockfd);
 			break;
 		}
-
 	}
 
 	mpz_clear(sId); mpz_clear(targetId);
@@ -212,9 +264,9 @@ void listenServerUDPSocket() {
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
 			if (closestPrecedingFinger(targetId, sId, ipAddr, &port)) { // found
-				createResPkt(sendBuf, NULL, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_FOUND);
+				createResPkt(sendBuf, NULL, sId, ipAddr, port, 0, RES_FIND_CLOSEST_FINGER_FOUND);
 			} else {
-				createResPkt(sendBuf, NULL, sId, ipAddr, port, RES_FIND_CLOSEST_FINGER_NOTFOUND);
+				createResPkt(sendBuf, NULL, sId, ipAddr, port, 0, RES_FIND_CLOSEST_FINGER_NOTFOUND);
 			}
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
@@ -225,7 +277,7 @@ void listenServerUDPSocket() {
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
 			getPredecesor(predId, ipAddr, &predPort);
-			createResPkt(sendBuf, NULL, predId, ipAddr, predPort, RES_GET_PRED);
+			createResPkt(sendBuf, NULL, predId, ipAddr, predPort, 0, RES_GET_PRED);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
@@ -235,7 +287,7 @@ void listenServerUDPSocket() {
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);	
 			getSuccessor(sId, ipAddr, &sPort);
-			createResPkt(sendBuf, NULL, sId, ipAddr, sPort, RES_GET_SUCC);
+			createResPkt(sendBuf, NULL, sId, ipAddr, sPort, 0, RES_GET_SUCC);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
@@ -249,7 +301,7 @@ void listenServerUDPSocket() {
 			// fprintf(stderr, "Recieved: REQ_CHECK_ALIVE\n");
 			size = sizeof(char) * 2;
 			sendBuf = malloc(size);
-			createResPkt(sendBuf, NULL, NULL, NULL, 0, RES_CHECK_ALIVE);
+			createResPkt(sendBuf, NULL, NULL, NULL, 0, 0, RES_CHECK_ALIVE);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
 			break;
@@ -270,8 +322,7 @@ void listenServerUDPSocket() {
 void loopStabilize() {
 
 	while (1) {
-		// sleep(0.5);
-		usleep(1000 * 1000);
+		usleep(500 * 1000);
 		stabilize();
 	}	
 	pthread_exit(0); //exit
@@ -344,9 +395,18 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		buf[1] = pktType & 0xFF;
 		break;
 
-	case REQ_GET_DATA:
+	case REQ_GET_KEY:
 		buf[0] = 0xC0;
 		buf[1] = pktType & 0xFF;
+
+		if (sId != NULL) {
+			unsigned char sIdStr[SHA_DIGEST_LENGTH];
+			mpzToByteArray(sId, sIdStr);
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				buf[i+2] = sIdStr[i];
+			}
+		}
+
 		break;
 
 	default:
@@ -366,7 +426,7 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
  * @return     [description]
  */
 void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, 
-					uint16_t port, int pktType) {
+					uint16_t port, int keySize, int pktType) {
 	int i = 0;
 
 	switch (pktType) {
@@ -402,7 +462,14 @@ void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		buf[0] = 0xC0;
 		buf[1] = pktType & 0xFF;
 		break;
-	
+
+/**	
+	case RES_GET_KEY_SIZE:
+		buf[0] = 0xC0;
+		buf[1] = pktType & 0xFF;
+
+		break;
+**/
 	default:
 		break;
 	}
@@ -416,7 +483,7 @@ void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
  * @param keySize  [description]
  * @param type [description]
  */
-void createResDataPkt(char* buf, int dataSize, unsigned char* data, int pktType) {
+void createResKeyPkt(char* buf, mpz_t key, char* data, int dataSize, int pktType) {
 	if (dataSize < 0) {
 		fprintf(stderr, "Size should be bigger than 0\n");
 	}
@@ -480,15 +547,26 @@ int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port,
 			}
 			ByteArrayToMpz(sId, sIdStr);
 		}
-		
 		break;
 
-	case RES_GET_DATA:
+	case REQ_GET_KEY:
+		if (sId != NULL) {
+			unsigned char sIdStr[SHA_DIGEST_LENGTH];
+			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+				sIdStr[i] = buf[i+2];
+			}
+			ByteArrayToMpz(sId, sIdStr);
+		}
+		break;
+		
+#if 0
+	case RES_GET_KEY:
 		*dataSize = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
 		for (i = 0; i < *dataSize; ++i) {
 			data[i] = buf[i+4];
 		}
 		break;
+#endif
 
 	default:
 		break;
@@ -599,7 +677,7 @@ void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
 	free(buf);
 }
 
-void sendReqSuccForDataPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
+void sendReqSuccForKeyPkt(int sockfd, mpz_t id, char* sIpAddr, uint16_t sPort) {
 	
 	struct sockaddr_in servAddr;
 	memset(&servAddr, 0, sizeof(servAddr));
@@ -614,9 +692,9 @@ void sendReqSuccForDataPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
 		return;
 	}
 
-	int size = sizeof(char) * 2;
+	int size = sizeof(char) * (2 + SHA_DIGEST_LENGTH);
 	char* buf = malloc(size);
-	createReqPkt(buf, NULL, NULL, NULL, 0, REQ_GET_DATA);
+	createReqPkt(buf, NULL, id, NULL, 0, REQ_GET_KEY);
 	write(sockfd, buf, size);
 	free(buf);
 }
@@ -660,7 +738,7 @@ int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
  * @param  keySize  The number of keys
  * @return      	-1 if error, 6 or 7 if successful
  */
-int recvResDataPkt(int sockfd, unsigned char* data, int* dataSize) {
+int recvResKeyPkt(int sockfd, unsigned char* data, int* dataSize) {
 	char buf[DATA_SIZE+4];
 	int n = read(sockfd, buf, DATA_SIZE+4);
 	if(n < 0) {

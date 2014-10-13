@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
 	// free(mdString);
 
 	if (argc > 3 && argc < 2) {
-		printf("Usage: chord -p portNum -f fileName-t -i\n");
+		printf("Usage: chord -p portNum -f fileName -k keyFileName -l lookupKeyFilenName -i\n");
 		return -1;
 	}
 	
@@ -22,11 +22,13 @@ int main(int argc, char *argv[]) {
 	int port = 0;
 	bool interactive = false;
 	char* fileName = NULL;
-	while ((c = getopt(argc, argv, "f:t:p:i")) != -1) {
+	char* keyFileName = NULL;
+	char* lkupKeyFileName = NULL;
+	while ((c = getopt(argc, argv, "f:k:l:p:i")) != -1) {
 		switch (c) {
-		case 't': 
-			fTime = atoi(optarg);
-			break;
+		// case 't': 
+		// 	fTime = atoi(optarg);
+		// 	break;
 		case 'p':
 			port = atoi(optarg);
 			break;
@@ -37,6 +39,14 @@ int main(int argc, char *argv[]) {
 			fileName = optarg;
 			fprintf(stderr, "fileName: %s\n", fileName);
 			break;
+		case 'k':
+			keyFileName = optarg;
+			fprintf(stderr, "keyFileName: %s\n", keyFileName);
+			break;
+		case 'l':
+			lkupKeyFileName = optarg;
+			fprintf(stderr, "lkupKeyFileName: %s\n", lkupKeyFileName);
+			break;
 		default:
 			printf("Usage: chord -p portNum -t -i\n");
 			return -1;
@@ -44,8 +54,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if (port > 0){
-		initNode(fileName, port, fTime, interactive);
+		initNode(fileName, keyFileName, lkupKeyFileName, port, fTime, interactive);
 	}
 	free(fileName);
+	free(keyFileName);
+	free(lkupKeyFileName);
 	return 0;
 }

@@ -5,6 +5,7 @@
  */
 
 #include "util.h"
+#include "node.h"
 
 void mpzToByteArray(mpz_t value, unsigned char* ret) {
 	// char* str = mpz_get_str(NULL, 16, value);
@@ -74,6 +75,10 @@ void hashToString(unsigned char* digest, char* mdString) {
  */
 int cmpfunc(const void* a, const void* b) {
 	return (*(int*)a - *(int*)b);
+	// KeyData* k1 = (struct KeyData*) a; 
+	// KeyData* k2 = (struct KeyData*) b;
+
+	// return mpz_cmp(k1->key, k2->key); 
 }
 
 void freeStr(char* ptr) {

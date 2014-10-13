@@ -28,7 +28,8 @@
 #define DATA_SIZE 1024
 #define FT_SIZE 160
 #define IPADDR_SIZE 15
-#define SLIST_SIZE 3
+#define SLIST_SIZE 10
+#define KEY_SIZE 1024
 
 typedef int bool;
 #define true 1
@@ -60,7 +61,7 @@ struct KeyData {
 
 struct _Node{
 	struct NodeInfo ndInfo;
-	struct KeyData keyData[SLIST_SIZE+1];
+	struct KeyData keyData[KEY_SIZE];
 	int keySize; 							/// the number of keys
 	struct NodeInfo predInfo;
 	struct FingerTable ft[FT_SIZE];
@@ -71,20 +72,24 @@ struct _Node{
 int connfdUDP;
 int connfdTCP;
 
-FILE *fp;
-
 pthread_t tid[3];				/// pthread (server, client, stablizing)
 pthread_mutex_t lock;			/// pthrea lock
 
-int initNode(char* fileName, uint16_t port, int fTime, bool menu);
+/* For simulation */
+mpz_t simKeys[512];
+int simSize;
+void sim_pathLength();
+/* simulation end */
+
+int initNode(char* idFile, char* keysFile, char* lkupFile, uint16_t port, int fTime, bool menu);
 void initServerSocket(uint16_t port);
 void listenServerTCPSocket();
 void listenServerUDPSocket();
 void loopStabilize();
 
 void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
-void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int pktType);
-void createResDataPkt(char* buf, int dataSize, unsigned char* data, int pktType);
+void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t port, int keySize, int pktType);
+void createResKeyPkt(char* buf, mpz_t key, char* data, int dataSize, int pktType);
 
 int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port, 
 			unsigned char* data, int* dataSize);
@@ -100,4 +105,5 @@ int recvResPkt(int sockfd, mpz_t sId, char* sIpAddr, uint16_t* sPort);
 
 int connectToServer(int* sockfd, char* ipAddr, uint16_t port);
 void printMenu();
+
 #endif
