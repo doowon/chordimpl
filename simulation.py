@@ -5,7 +5,7 @@ import random
 import subprocess
 import time
 
-numNode = 2**10
+numNode = 2**3
 defaultPort = 10000
 unsortedNodes = {}
 
@@ -84,12 +84,14 @@ if __name__ == "__main__":
 	p = subprocess.Popen(['./chord', '-p10000', '-fnode/10000', '-kkey/10000', '-llookupKey/10000'], shell=False, stdout=simFileOutput, stderr=tmpFileOutput, preexec_fn=os.setsid)
 	print 'Node 10000'  + ' starts running, pid:' + str(p.pid)
 
+	i = 0
 	for n, h in unsortedNodes.iteritems():
 		time.sleep(1)
+		i += 1
 		if n != str(defaultPort):
 			tmpFileOutput = open('output/' + str(n), 'w')
 			simFileOutput = open('output/sim_' + str(n), 'w')
 			arg = ['-p' + str(n), '-fnode/' + str(n), '-kkey/' + str(n), '-llookupKey/' + str(n)]
 			# print arg
 			p = subprocess.Popen(['./chord', arg[0], arg[1], arg[2], arg[3]], shell=False, stdout=simFileOutput, stderr=tmpFileOutput, preexec_fn=os.setsid)
-			print 'Node ' + str(n) + ' starts running, pid:' + str(p.pid)
+			print 'Node ' + str(n) + ' starts running, pid:' + str(p.pid) + ' ' + str(i)
