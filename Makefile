@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I. -Werror -Wall -DDEBUG
+CFLAGS=-I. -Werror -Wall -DDEBUG -g
 
 chord: chord.o node.o main.o util.o
 	$(CC) -o chord chord.o node.o util.o main.o $(CFLAGS) \

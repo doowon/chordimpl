@@ -3,7 +3,7 @@ import numpy as np
 
 results = []
 
-flists = glob.glob('output/sim_*')
+flists = glob.glob('10/sim_*')
 for f in flists:
 	file = open(f,'r')
 	while True:

@@ -29,12 +29,7 @@ void ByteArrayToMpz(mpz_t value, unsigned char* ret) {
 	mpz_set_str(value, str, 16);
 }
 
-bool between(const mpz_t id, const mpz_t start, const mpz_t end) {
-
-	unsigned char maxValue[SHA_DIGEST_LENGTH] = {[0 ... SHA_DIGEST_LENGTH-1] = 0xFF};
-	mpz_t max; mpz_init(max);
-	mpz_import(max, SHA_DIGEST_LENGTH, 1, sizeof(maxValue[0]), 1, 0, maxValue);
-	mpz_t min; mpz_init(min);
+bool between(const mpz_t id, const mpz_t start, const mpz_t end, const mpz_t max, const mpz_t min) {
 
 	if (mpz_cmp(start, end) < 0 && mpz_cmp(start, id) <= 0 
 		&& mpz_cmp(id, end) <= 0) {
@@ -47,7 +42,6 @@ bool between(const mpz_t id, const mpz_t start, const mpz_t end) {
 		return true;
 	}
 
-	mpz_clear(max); mpz_clear(min);
 	return false;
 }
 

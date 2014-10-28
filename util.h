@@ -21,7 +21,7 @@ typedef int bool;
 
 void ByteArrayToMpz(mpz_t value, unsigned char* ret);
 void mpzToByteArray(mpz_t value, unsigned char* ret);
-bool between(const mpz_t id, const mpz_t start, const mpz_t end);
+bool between(const mpz_t id, const mpz_t start, const mpz_t end, const mpz_t max, const mpz_t min);
 void hashSHA1(char* string, char* digest);
 void hashToString(unsigned char* digest, char* mdString);
 void addValueToHash(unsigned char* digest, unsigned char* value, unsigned char* ret);
