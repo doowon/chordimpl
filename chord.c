@@ -341,9 +341,9 @@ void stabilize() {
 	fixFingers();
 	buildSuccessorList();
 	
-	// printSuccList();
-	// printDebug();
-	// printFT();
+	printDebug();
+	printSuccList();
+	printFT();
 
 	freeStr(str); freeStr(str2);
 	mpz_clear(sId); mpz_clear(tmp); mpz_clear(predId);
@@ -372,6 +372,7 @@ void buildSuccessorList() {
 	uint16_t ssPort = 0; // the successor's successor
 
 	if (mpz_cmp(nd->ndInfo.id, sId) == 0) {
+		mpz_clear(sId); mpz_clear(ssId);
 		return;
 	}
 
@@ -418,6 +419,7 @@ void buildSuccessorList() {
 		sPort = ssPort;
 
 		if (mpz_cmp(nd->ndInfo.id, sId) == 0) {
+			mpz_clear(sId); mpz_clear(ssId);
 			break;
 		}
 	}
@@ -767,9 +769,9 @@ void printFT() {
 		fprintf(stderr, "Start: %s \t Succ: %s \t IP: %s \t Port: %lu\n", 
 			str, str2, nd->ft[i].sInfo.ipAddr,
 			(unsigned long)nd->ft[i].sInfo.port);
+		freeStr(str); freeStr(str2);
 	}
 	fprintf(stderr, "[FT END]\n");
-	freeStr(str); freeStr(str2);
 }
 
 void printSuccList() {
@@ -782,8 +784,8 @@ void printSuccList() {
 		md2 = mpz_get_str(NULL, 16, nd->sList[i].info.id);
 		fprintf(stderr, "%s (data: %s)-> ", md2, nd->keyData[i+1].data);
 		fprintf(stderr, "%s \n", md);
+		freeStr(md); freeStr(md2);
 	}
-	freeStr(md); freeStr(md2);
 }
 
 /*------------------------
