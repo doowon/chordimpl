@@ -341,7 +341,7 @@ void loopStabilize() {
 void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, 
 					uint16_t port, int pktType) {
 
-	int i = 0;
+	int i = 0; int j = 0;
 
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
@@ -354,8 +354,9 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		if (targetId != NULL) {
 			unsigned char targetIdStr[SHA_DIGEST_LENGTH];
 			mpzToByteArray(targetId, targetIdStr);
-			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-				buf[i+4] = targetIdStr[i] & 0xFF;
+			for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
+				buf[j+4] = targetIdStr[i] & 0xFF;
+				j++;
 			}
 		}
 		break;
@@ -383,8 +384,12 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		if (sId != NULL) {
 			unsigned char sIdStr[SHA_DIGEST_LENGTH];
 			mpzToByteArray(sId, sIdStr);
-			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-				buf[i+8] = sIdStr[i];
+			// for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			// 	buf[i+8] = sIdStr[i];
+			// }
+			for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
+				buf[j+8] = sIdStr[i] & 0xFF;
+				j++;
 			}
 		}
 
@@ -402,8 +407,12 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		if (sId != NULL) {
 			unsigned char sIdStr[SHA_DIGEST_LENGTH];
 			mpzToByteArray(sId, sIdStr);
-			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-				buf[i+2] = sIdStr[i];
+			// for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			// 	buf[i+2] = sIdStr[i];
+			// }
+			for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
+				buf[j+2] = sIdStr[i] & 0xFF;
+				j++;
 			}
 		}
 
@@ -427,8 +436,7 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
  */
 void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr, 
 					uint16_t port, int keySize, int pktType) {
-	int i = 0;
-
+	int i = 0; int j = 0;
 	switch (pktType) {
 	case RES_FIND_CLOSEST_FINGER_FOUND:
 	case RES_FIND_CLOSEST_FINGER_NOTFOUND:
@@ -451,8 +459,12 @@ void createResPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		if (sId != NULL) {
 			unsigned char sIdStr[SHA_DIGEST_LENGTH];
 			mpzToByteArray(sId, sIdStr);
-			for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-				buf[i+8] = sIdStr[i];
+			// for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+			// 	buf[i+8] = sIdStr[i];
+			// }
+			for (i = SHA_DIGEST_LENGTH-1; i >= 0; --i) {
+				buf[j+8] = sIdStr[i] & 0xFF;
+				j++;
 			}
 		}
 

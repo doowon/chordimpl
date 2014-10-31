@@ -23,6 +23,9 @@ Node* nd;
 extern pthread_mutex_t lock;			/// pthread lock
 mpz_t max; mpz_t min;					/// max and min for comparing Keys
 
+mpz_t tmp;
+mpz_t tmp2;
+
 void initChord(mpz_t id, FILE* keysfp, uint16_t port);
 bool findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort);
 bool closestPrecedingFinger(mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t* port);

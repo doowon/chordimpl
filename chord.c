@@ -25,6 +25,12 @@ void initChord(mpz_t id, FILE* keysfp, uint16_t port) {
 	mpz_import(max, SHA_DIGEST_LENGTH, 1, sizeof(maxValue[0]), 1, 0, maxValue);
 	mpz_init(min);
 
+	mpz_init(tmp);
+	mpz_set_str(tmp, "7c3c1bbda07013241250d5b6154b9de7838989", 16);
+	mpz_init(tmp2);
+	mpz_set_str(tmp2, "fe762cfc3a765d77eef6c574d2379623e1981fc0", 16);
+
+
 	nd = malloc(sizeof(Node));
 	mpz_init(nd->ndInfo.id);
 
@@ -52,10 +58,10 @@ void initChord(mpz_t id, FILE* keysfp, uint16_t port) {
 	nd->predInfo.port = 0;  //init predecessor port
 
 	//init the finger table
-	mpz_t tmp; mpz_t n;	
+	mpz_t tmp; mpz_t n;
+	mpz_init(tmp); mpz_init(n);
 	int i = 0;
-	for (i = 0; i < FT_SIZE; ++i) {
-		mpz_init(tmp); mpz_init(n); 
+	for (i = 0; i < FT_SIZE; ++i) { 
 		mpz_ui_pow_ui(tmp, 2, i);
 		mpz_add(n, nd->ndInfo.id, tmp);
 		mpz_mod(nd->ft[i].start, n, max);
@@ -65,11 +71,11 @@ void initChord(mpz_t id, FILE* keysfp, uint16_t port) {
 		nd->ft[i].sInfo.port = port;
 		strcpy(nd->ft[i].sInfo.ipAddr, nd->ndInfo.ipAddr);
 		nd->ftSize++;
+		
 	}
 	mpz_clear(tmp); mpz_clear(n);
 
-	// printFT();;
-	//raad random key values from file
+	//read random key values from file
 	nd->keySize = 0; //initialize the number of keys
 	if (keysfp != NULL) {
 		ssize_t read; size_t len;
@@ -110,15 +116,21 @@ bool findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
 	// char* str = NULL;
 	while (true) {
 		sendReqClosestFingerPkt(sockfd, targetId, sIpAddr, *sPort);
-		
-		// str = mpz_get_str(NULL, 16, targetId);
-		// fprintf(stderr, "targetid: %s\n", str);
 		pktType = recvResPkt(sockfd, sId, sIpAddr, sPort);
-		// str = mpz_get_str(NULL, 16, sId);
-		// fprintf(stderr, "sId: %s\n", str);
+
+// if (mpz_cmp(targetId, tmp) == 0) {
+// 	str = mpz_get_str(NULL, 16, sId);
+// 	fprintf(stdout, "sId: %s %d\n", str, *sPort);
+// 	free(str);
+// }
 		if (pktType == RES_FIND_CLOSEST_FINGER_FOUND) {
 			close(sockfd);
-			// freeStr(str);
+
+// if (mpz_cmp(targetId, tmp) == 0) {
+// 	str = mpz_get_str(NULL, 16, sId);
+// 	fprintf(stdout, "FOUND sId: %s %d\n", str, *sPort);
+// 	free(str);
+// }
 			return true;
 		}
 	}
@@ -136,22 +148,15 @@ uint32_t sim_findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* s
 	}
 	
 	int pktType = 0;
-	// char* str = NULL;
 	while (true) {
 		pathLength++;
 		sendReqClosestFingerPkt(sockfd, targetId, sIpAddr, *sPort);
-		// str = mpz_get_str(NULL, 16, targetId);
-		// fprintf(stderr, "targetid: %s\n", str);
 		pktType = recvResPkt(sockfd, sId, sIpAddr, sPort);
-		// str = mpz_get_str(NULL, 16, sId);
-		// fprintf(stderr, "sId: %s\n", str);
 		if (pktType == RES_FIND_CLOSEST_FINGER_FOUND) {
 			close(sockfd);
-			// freeStr(str);
 			return pathLength;
 		}
 	}
-	// freeStr(str);
 	close(sockfd);
 	return -1;
 }
@@ -184,6 +189,14 @@ bool closestPrecedingFinger(mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t* p
 			strcpy(ipAddr, nd->ft[i].sInfo.ipAddr);
 			*port = nd->ft[i].sInfo.port;
 
+// if (mpz_cmp(nd->ndInfo.id, tmp2) == 0) {
+// 	char* str; char* str2;
+// 	str = mpz_get_str(NULL, 16, nd->ft[i].start);
+// 	str2 = mpz_get_str(NULL, 16, targetId);
+// 	fprintf(stdout, "target: %s\t", str2);
+// 	fprintf(stdout, " closest: %s %d\n", str, *port);
+// 	free(str); free(str2);
+// }
 			// if (between(targetId, nd->ft[i].start, sId)) {
 			// if (mpz_cmp(targetId, sId) <= 0 
 			// 	|| (mpz_cmp(targetId, sId) > 0 && mpz_cmp(nd->ft[i].start, sId) > 0)) {
@@ -191,7 +204,7 @@ bool closestPrecedingFinger(mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t* p
 			// }
 			if (mpz_cmp(sId, nd->ndInfo.id) == 0) {
 				return true;
-			} else if(between(targetId, nd->ndInfo.id, sId, max, min)) {
+			} else if(between(targetId, nd->ft[i].start, sId, max, min)) {
 				return true;
 			}
 			return false;
@@ -228,7 +241,7 @@ void join() {
 			askSuccForPred(sId, ipAddr, port, predId, predIpAddr, &predPort);
 			str = mpz_get_str(NULL, 16, sId);
 			str2 = mpz_get_str(NULL, 16, predId);
-			// fprintf(stderr, "[Join] Found SID %s, PID %s \n", str, str2);
+			fprintf(stderr, "[Join] Found SID %s, PID %s \n", str, str2);
 			
 			// if (mpz_cmp(predId, nd->ndInfo.id) > 0) {
 			// 	usleep(500 * 1000);
@@ -254,6 +267,7 @@ void join() {
 				}
 			}
 		}
+		
 		freeStr(str); freeStr(str2);
 		mpz_clear(sId); mpz_clear(targetId); mpz_clear(predId);
 		return;
@@ -292,8 +306,8 @@ void stabilize() {
 	char sIpAddr[IPADDR_SIZE];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
 	
-	mpz_t tmp; mpz_init(tmp);
-	if (mpz_cmp(sId, tmp) == 0 || sPort == 0) {
+	if (mpz_cmp(sId, min) == 0 || sPort == 0) {
+		mpz_clear(sId);
 		return;
 	}
 
@@ -301,8 +315,10 @@ void stabilize() {
 	if (!checkAlive(sIpAddr, sPort)) {
 		int i = 0;
 		for (i = 0; i < SLIST_SIZE; ++i) {
-			if (mpz_cmp(nd->sList[i].sInfo.id, tmp) == 0)
+			if (mpz_cmp(nd->sList[i].sInfo.id, min) == 0){
+				mpz_clear(sId);
 				return;
+			}
 			mpz_set(sId, nd->sList[i].sInfo.id);
 			sPort = nd->sList[i].sInfo.port;
 			strcpy(sIpAddr, nd->sList[i].sInfo.ipAddr);
@@ -321,9 +337,9 @@ void stabilize() {
 	
 	askSuccForPred(sId, sIpAddr, sPort, predId, predIpAddr, &predPort);
 
-	char* str; char* str2;
-	str = mpz_get_str(NULL, 16, sId);
-	str2 = mpz_get_str(NULL, 16, predId);
+	// char* str; char* str2;
+	// str = mpz_get_str(NULL, 16, sId);
+	// str2 = mpz_get_str(NULL, 16, predId);
 	// fprintf(stderr, "[Stabilzing] SID: %s 's PredID1: %s PredPort: %lu\n", str, str2, (unsigned long) predPort);
 
 	if (mpz_cmp(nd->ndInfo.id, predId) != 0) {
@@ -345,8 +361,8 @@ void stabilize() {
 	printSuccList();
 	printFT();
 
-	freeStr(str); freeStr(str2);
-	mpz_clear(sId); mpz_clear(tmp); mpz_clear(predId);
+	// freeStr(str); freeStr(str2);
+	mpz_clear(sId); mpz_clear(predId);
 // fprintf(stderr, "[Stablize END]\n");
 }
 
@@ -357,19 +373,24 @@ void buildSuccessorList() {
 // fprintf(stderr, "[buildSuccessorList Start]\n");
 	int i = 0;
 
+	for (i = 0; i < SLIST_SIZE; ++i) {
+		mpz_set(nd->sList[i].info.id, min);
+		mpz_set(nd->sList[i].sInfo.id, min);
+	}
+
 	//TODO: check to see if the successor is alive.
 	cpyNodeInfo(&(nd->ndInfo), &(nd->sList[0].info));
 	cpyNodeInfo(&(nd->ft[0].sInfo), &(nd->sList[0].sInfo));
 
 	mpz_t sId; mpz_init(sId);
-	mpz_set(sId, nd->sList[0].sInfo.id); // the successor
-	char sIpAddr[IPADDR_SIZE]; // the successor
+	mpz_set(sId, nd->sList[0].sInfo.id); 		// the successor
+	char sIpAddr[IPADDR_SIZE]; 					// the successor
 	strcpy(sIpAddr, nd->sList[0].sInfo.ipAddr);
-	uint16_t sPort = nd->sList[0].sInfo.port; // the successor
+	uint16_t sPort = nd->sList[0].sInfo.port; 	// the successor
 
 	mpz_t ssId; mpz_init(ssId);
-	char ssIpAddr[IPADDR_SIZE]; // the successor's successor
-	uint16_t ssPort = 0; // the successor's successor
+	char ssIpAddr[IPADDR_SIZE]; 				// the successor's successor
+	uint16_t ssPort = 0; 						// the successor's successor
 
 	if (mpz_cmp(nd->ndInfo.id, sId) == 0) {
 		mpz_clear(sId); mpz_clear(ssId);
@@ -397,13 +418,11 @@ void buildSuccessorList() {
 		}
 
 		//successor
-		// mpz_clear(nd->sList[i].info.id);
 		mpz_set(nd->sList[i].info.id, sId);
 		nd->sList[i].info.port = sPort;
 		strcpy(nd->sList[i].info.ipAddr, sIpAddr);
 
 		//sucessor's successor
-		// mpz_clear(nd->sList[i].sInfo.id);
 		mpz_set(nd->sList[i].sInfo.id, ssId);
 		nd->sList[i].sInfo.port = ssPort;
 		strcpy(nd->sList[i].sInfo.ipAddr, ssIpAddr);
@@ -413,14 +432,13 @@ void buildSuccessorList() {
 		askSuccForKey(nd->sList[i].info.ipAddr, nd->sList[i].info.port+2000,
 						nd->keyData[i+1].data,  &nd->keyData[i+1].dataSize);
 		*/
-		// mpz_clear(sId);
 		mpz_set(sId, ssId);
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
 
 		if (mpz_cmp(nd->ndInfo.id, sId) == 0) {
 			mpz_clear(sId); mpz_clear(ssId);
-			break;
+			return;
 		}
 	}
 	// freeStr(str);
@@ -566,17 +584,25 @@ void fixFingers() {
 	char sIpAddr[IPADDR_SIZE];
 	mpz_t targetId; mpz_init(targetId);
 
-
-
-#if 1
 	for (i = 1; i < nd->ftSize; ++i) {
 		mpz_set(targetId, nd->ft[i].start);
+
+// if (mpz_cmp(targetId, tmp) == 0) {
+// 	printf("[START]\n");
+// }
+
 		if (between(targetId, nd->ft[i-1].start, nd->ft[i-1].sInfo.id, max, min)) {
 			mpz_set(nd->ft[i].sInfo.id, nd->ft[i-1].sInfo.id);
 			strcpy(nd->ft[i].sInfo.ipAddr, nd->ft[i-1].sInfo.ipAddr);
 			nd->ft[i].sInfo.port = nd->ft[i-1].sInfo.port;
 		} 
 		else {
+
+// if (mpz_cmp(targetId, tmp) == 0) {
+// 	char* a = mpz_get_str(NULL, 16, nd->ft[0].sInfo.id);
+// 	printf("Node to ask: %s %d\n", a, nd->ft[0].sInfo.port);
+// 	free(a);
+// }
 			// ask its sucessor for the targer ID
 			strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
 			sPort = nd->ft[0].sInfo.port;
@@ -587,19 +613,6 @@ void fixFingers() {
 			}
 		}
 	}
-#endif
-#if 0
-	for (i = 1; i < nd->ftSize; ++i) {
-		memcpy(targetId, nd->ft[i].start, SHA_DIGEST_LENGTH);
-		strcpy(sIpAddr, nd->ndInfo.ipAddr);
-		sPort = nd->ndInfo.port;
-		if(findSuccessor(targetId, sId, sIpAddr, &sPort)) {
-			memcpy(nd->ft[i].sInfo.id, sId, SHA_DIGEST_LENGTH);
-			strcpy(nd->ft[i].sInfo.ipAddr, sIpAddr);
-			nd->ft[i].sInfo.port = sPort;
-		}
-	}
-#endif
 
 	// printFT();
 	mpz_clear(sId); mpz_clear(targetId);
@@ -731,7 +744,6 @@ void modifyPred(mpz_t id, char* ipAddr, uint16_t port) {
  */
 void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst) {
 	assert(src); assert(dst);
-	// mpz_clear(dst->id);
 	mpz_set(dst->id, src->id);
 	dst->port = src->port;
 	strcpy(dst->ipAddr, src->ipAddr);
@@ -793,7 +805,6 @@ For Simulation
 --------------------------*/
 
 void sim_pathLength() {
-	// printf("[SIM] Start\n");
 	sleep(10 + pow(2,6));
 	mpz_t sId; mpz_init(sId);
 	char ipAddr[IPADDR_SIZE];
@@ -808,6 +819,5 @@ void sim_pathLength() {
 		printf("%lu\n", (unsigned long) res);
 		fflush(stdout);
 	}
-	// printf("[SIM] End\n");
 	mpz_clear(sId);
 }

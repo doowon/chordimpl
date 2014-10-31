@@ -19,7 +19,7 @@ void mpzToByteArray(mpz_t value, unsigned char* ret) {
 		memset(ret, 0, SHA_DIGEST_LENGTH);
 		return;
 	}
-	mpz_export(ret, NULL, 1, sizeof(char), 1, 0, value);
+	mpz_export(ret, NULL, -1, sizeof(char), 1, 0, value);
 }
 
 void ByteArrayToMpz(mpz_t value, unsigned char* ret) {
