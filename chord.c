@@ -375,7 +375,6 @@ void buildSuccessorList() {
 		return;
 	}
 
-	i = 1;
 	// char* str;
 	for (i = 0; i < SLIST_SIZE; ++i) {
 		// str = mpz_get_str(NULL, 16, sId);
@@ -397,13 +396,13 @@ void buildSuccessorList() {
 		}
 
 		//successor
-		mpz_clear(nd->sList[i].info.id);
+		// mpz_clear(nd->sList[i].info.id);
 		mpz_set(nd->sList[i].info.id, sId);
 		nd->sList[i].info.port = sPort;
 		strcpy(nd->sList[i].info.ipAddr, sIpAddr);
 
 		//sucessor's successor
-		mpz_clear(nd->sList[i].sInfo.id);
+		// mpz_clear(nd->sList[i].sInfo.id);
 		mpz_set(nd->sList[i].sInfo.id, ssId);
 		nd->sList[i].sInfo.port = ssPort;
 		strcpy(nd->sList[i].sInfo.ipAddr, ssIpAddr);
@@ -413,7 +412,7 @@ void buildSuccessorList() {
 		askSuccForKey(nd->sList[i].info.ipAddr, nd->sList[i].info.port+2000,
 						nd->keyData[i+1].data,  &nd->keyData[i+1].dataSize);
 		*/
-		mpz_clear(sId);
+		// mpz_clear(sId);
 		mpz_set(sId, ssId);
 		strcpy(sIpAddr, ssIpAddr);
 		sPort = ssPort;
