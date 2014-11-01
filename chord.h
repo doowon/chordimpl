@@ -20,7 +20,7 @@
 #define DEFAULT_NODE_ID 0
 
 Node* nd;
-extern pthread_mutex_t lock;			/// pthread lock
+pthread_mutex_t lock;					/// pthread lock
 mpz_t max; mpz_t min;					/// max and min for comparing Keys
 
 mpz_t tmp;

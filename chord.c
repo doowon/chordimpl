@@ -30,7 +30,6 @@ void initChord(mpz_t id, FILE* keysfp, uint16_t port) {
 	mpz_init(tmp2);
 	mpz_set_str(tmp2, "fe762cfc3a765d77eef6c574d2379623e1981fc0", 16);
 
-
 	nd = malloc(sizeof(Node));
 	mpz_init(nd->ndInfo.id);
 
@@ -142,9 +141,9 @@ bool findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
 uint32_t sim_findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort) {
 	uint32_t pathLength = 0;
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sockfd == -1) {
+	if (sockfd == -100) {
 		fprintf(stderr, "Socket opening error\n");
-		return -1;
+		return -100;
 	}
 	
 	int pktType = 0;
@@ -158,7 +157,7 @@ uint32_t sim_findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* s
 		}
 	}
 	close(sockfd);
-	return -1;
+	return -100;
 }
 
 /**
@@ -626,9 +625,11 @@ void fixFingers() {
  * @param port   predecessor port
  */
 void getPredecesor(mpz_t id, char* ipAddr, uint16_t* port) {
+pthread_mutex_lock(&lock);
 	mpz_set(id, nd->predInfo.id);
 	strcpy(ipAddr, nd->predInfo.ipAddr);
 	*port = nd->predInfo.port;
+pthread_mutex_unlock(&lock);
 }
 
 /**
@@ -638,9 +639,11 @@ void getPredecesor(mpz_t id, char* ipAddr, uint16_t* port) {
  * @param port   [description]
  */
 void getSuccessor(mpz_t id, char* ipAddr, uint16_t* port) {
+pthread_mutex_lock(&lock);
 	mpz_set(id, nd->ft[0].sInfo.id);
 	strcpy(ipAddr, nd->ft[0].sInfo.ipAddr);
 	*port = nd->ft[0].sInfo.port;
+pthread_mutex_unlock(&lock);	
 }
 
 #if 0
@@ -731,7 +734,6 @@ void modifyPred(mpz_t id, char* ipAddr, uint16_t port) {
 	nd->predInfo.port = port;
 	strcpy(nd->predInfo.ipAddr, ipAddr);
 	pthread_mutex_unlock(&lock);
-
 	// char* str = mpz_get_str(NULL, 16, id);
 	// fprintf(stderr, "ModifyPredID: %s\n", str);
 	// freeStr(str);
@@ -805,7 +807,7 @@ For Simulation
 --------------------------*/
 
 void sim_pathLength() {
-	sleep(10 + pow(2,6));
+	sleep(10 + pow(2,8));
 	mpz_t sId; mpz_init(sId);
 	char ipAddr[IPADDR_SIZE];
 	strcpy(ipAddr, DEFAULT_IP_ADDR);

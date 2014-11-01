@@ -73,7 +73,7 @@ int connfdUDP;
 int connfdTCP;
 
 pthread_t tid[3];				/// pthread (server, client, stablizing)
-pthread_mutex_t lock;			/// pthrea lock
+// pthread_mutex_t lock;			/// pthrea lock
 
 /* For simulation */
 mpz_t simKeys[512];
