@@ -322,7 +322,7 @@ void listenServerUDPSocket() {
 void loopStabilize() {
 
 	while (1) {
-		usleep(500 * 1000);
+		usleep(50 * 1000);
 		stabilize();
 	}	
 	pthread_exit(0); //exit

@@ -47,7 +47,7 @@ void getKeys(mpz_t id, mpz_t keys[], int keySize, char* data[]);
 void setKeys(mpz_t keys[], int keySize);
 
 void stabilize();
-void notify(struct NodeInfo pNodeInf);
+void notify(const mpz_t);
 void buildSuccessorList();
 void fixFingers();
 void modifyPred(mpz_t id, char* ipAddr, uint16_t port);

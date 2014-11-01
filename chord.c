@@ -242,9 +242,9 @@ void join() {
 			str2 = mpz_get_str(NULL, 16, predId);
 			fprintf(stderr, "[Join] Found SID %s, PID %s \n", str, str2);
 			
-			// if (mpz_cmp(predId, nd->ndInfo.id) > 0) {
-			// 	usleep(500 * 1000);
-			// 	continue;
+			// if (!between(nd->ndInfo.id, sId, predId, max, min)) {
+				// usleep(500 * 1000);
+				// continue;
 			// }
 
 			mpz_set(nd->ft[0].sInfo.id, sId);
@@ -311,8 +311,8 @@ void stabilize() {
 	}
 
 	// To check to see if the successor fails
+	int i = 0;
 	if (!checkAlive(sIpAddr, sPort)) {
-		int i = 0;
 		for (i = 0; i < SLIST_SIZE; ++i) {
 			if (mpz_cmp(nd->sList[i].sInfo.id, min) == 0){
 				mpz_clear(sId);
@@ -342,15 +342,16 @@ void stabilize() {
 	// fprintf(stderr, "[Stabilzing] SID: %s 's PredID1: %s PredPort: %lu\n", str, str2, (unsigned long) predPort);
 
 	if (mpz_cmp(nd->ndInfo.id, predId) != 0) {
-		//this node is not just joining & connect
+		// this node is not just joining & connect
 		if (nd->predInfo.port != 0 && checkAlive(predIpAddr, predPort)) { 
+			// && between(predId, nd->ndInfo.id, sId, max, min)) { 
 			// fprintf(stderr, "[Stabilzing2] PredID: %s PredPort: %lu\n", str2, (unsigned long) str);
 			mpz_set(nd->ft[0].sInfo.id, predId);
 			strcpy(nd->ft[0].sInfo.ipAddr, predIpAddr);
 			nd->ft[0].sInfo.port = predPort;
 		}
 
-		notify(nd->ndInfo);
+		notify(nd->ndInfo.id);
 	}
 
 	fixFingers();
@@ -537,7 +538,7 @@ bool checkAlive(char* ipAddr, uint16_t port) {
  * @param  pNodeInfo to be a predecessor of its successor 
  * @return           [description]
  */
-void notify(struct NodeInfo pNodeInfo) {
+void notify(const mpz_t predId) {
 	pthread_mutex_lock(&lock);
 	mpz_t sId;
 	mpz_init(sId);
@@ -545,9 +546,8 @@ void notify(struct NodeInfo pNodeInfo) {
 	uint16_t sPort = nd->ft[0].sInfo.port;
 	char sIpAddr[IPADDR_SIZE];
 	strcpy(sIpAddr, nd->ft[0].sInfo.ipAddr);
-	mpz_t pId;
-	mpz_init(pId);
-	mpz_set(pId, nd->predInfo.id);
+	// mpz_t pId; mpz_init(pId);
+	// mpz_set(pId, nd->predInfo.id);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd == -1) {
@@ -556,18 +556,19 @@ void notify(struct NodeInfo pNodeInfo) {
 		return;
 	}
 
-	mpz_t tmp;
-	mpz_init(tmp);
-	// char* str; char* str2;
-	if ((mpz_cmp(pId, tmp) == 0) || mpz_cmp(nd->ndInfo.id, pNodeInfo.id) == 0) {
-		// str = mpz_get_str(NULL, 16, sId);
-		// str2 = mpz_get_str(NULL, 16, nd->ndInfo.id);
-		// fprintf(stderr, "[Notify] sID %s 's successor would be changed to %s\n", str, str2);
+	char* str; char* str2;
+	if ((mpz_cmp(predId, min) == 0) || mpz_cmp(nd->ndInfo.id, nd->ndInfo.id) == 0
+		|| between(nd->ndInfo.id, predId, sId, max, min)) {
+		str = mpz_get_str(NULL, 16, sId);
+		str2 = mpz_get_str(NULL, 16, nd->ndInfo.id);
+		fprintf(stderr, "[Notify] sID %s 's successor would be changed to %s\n", str, str2);
 		sendNotifyPkt(sockfd, sIpAddr, sPort, nd->ndInfo.id, nd->ndInfo.ipAddr, nd->ndInfo.port);
+		free(str); free(str2);
 	}
 
 	// freeStr(str); freeStr(str2);
-	mpz_clear(sId); mpz_clear(pId); mpz_clear(tmp);
+	mpz_clear(sId); 
+	// mpz_clear(pId);
 	close(sockfd);
 	pthread_mutex_unlock(&lock);
 }
@@ -807,7 +808,7 @@ For Simulation
 --------------------------*/
 
 void sim_pathLength() {
-	sleep(10 + pow(2,8));
+	sleep(5 + 0.1 * pow(2,10));
 	mpz_t sId; mpz_init(sId);
 	char ipAddr[IPADDR_SIZE];
 	strcpy(ipAddr, DEFAULT_IP_ADDR);
