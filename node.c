@@ -79,12 +79,6 @@ int initNode(char* idFile, char* keysFile, char* lkupFile, uint16_t port, int fT
 		abort();
 	}
 
-	err = pthread_create(&(tid[2]), NULL, (void*)&sim_pathLength, NULL);
-	if (err != 0) {
-		printf("can't create a pthread of sim_pathLength\n");
-		abort();
-	}
-
 	if (port > DEFAULT_PORT)
 		join();
 
@@ -93,14 +87,8 @@ int initNode(char* idFile, char* keysFile, char* lkupFile, uint16_t port, int fT
 		printMenu();
 	}
 */	
-	if (fTime > 0) {
-		sleep(fTime);
-	} else {
-		pthread_join(tid[0],NULL);
-		pthread_join(tid[1],NULL);
-		pthread_join(tid[2],NULL);
-		// pthread_join(tid[3],NULL);
-	}
+	pthread_join(tid[0],NULL);
+	pthread_join(tid[1],NULL);
 	
 	pthread_mutex_destroy(&lock);
 	
@@ -203,9 +191,6 @@ void listenServerTCPSocket() {
 			}
 			break;
 #endif
-		case START_SIMULATION:
-			// pathLength();
-			break;
 
 		default:
 			fprintf(stderr, "server: default\n");
@@ -260,12 +245,12 @@ void listenServerUDPSocket() {
 			break;
 		
 		case REQ_FIND_CLOSEST_FINGER: // Find closest finger preceding
-			// fprintf(stderr, "REQ_FIND_CLOSEST_FINGER\n");
 			size = sizeof(char) * 28;
 			sendBuf = malloc(size);
-			if (closestPrecedingFinger(targetId, sId, ipAddr, &port)) { // found
+			int ret = closestPrecedingFinger(targetId, sId, ipAddr, &port);
+			if (ret == true) { // found
 				createResPkt(sendBuf, NULL, sId, ipAddr, port, 0, RES_FIND_CLOSEST_FINGER_FOUND);
-			} else {
+			}  else {
 				createResPkt(sendBuf, NULL, sId, ipAddr, port, 0, RES_FIND_CLOSEST_FINGER_NOTFOUND);
 			}
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
@@ -294,7 +279,12 @@ void listenServerUDPSocket() {
 		
 		case REQ_MODIFY_PRED:  //modify its predecessor
 			// fprintf(stderr, "Recieved: Modify \n");
-			modifyPred(sId, ipAddr, port);
+			modifyPred(sId, ipAddr, port, false);
+			break;
+		
+		case REQ_MODIFY_PRED_TIME_OUT:  //modify its predecessor when timeout
+			// fprintf(stderr, "Recieved: Modify \n");
+			modifyPred(sId, ipAddr, port, true);
 			break;
 
 		case REQ_CHECK_ALIVE:
@@ -304,6 +294,17 @@ void listenServerUDPSocket() {
 			createResPkt(sendBuf, NULL, NULL, NULL, 0, 0, RES_CHECK_ALIVE);
 			sendto(connfdUDP, sendBuf, size, 0, (struct sockaddr*)&cliAddr, len);
 			free(sendBuf);
+			break;
+
+		case REQ_START_SIM:
+			// printf("START Simulation\n");
+			// fflush(stdout);
+			pthread_create(&(tid[2]), NULL, (void*)&sim_failure, NULL);
+			break;
+
+		case REQ_ABORT:
+			printf("Aborted\n"); fflush(stdout);
+			abort();
 			break;
 
 		default:
@@ -322,7 +323,7 @@ void listenServerUDPSocket() {
 void loopStabilize() {
 
 	while (1) {
-		usleep(50 * 1000);
+		usleep(500 * 1000);
 		stabilize();
 	}	
 	pthread_exit(0); //exit
@@ -368,6 +369,7 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 		break;
 
 	case REQ_MODIFY_PRED:
+	case REQ_MODIFY_PRED_TIME_OUT:
 		buf[0] = 0xC0;
 		buf[1] = pktType & 0xFF;
 
@@ -415,7 +417,6 @@ void createReqPkt(char* buf, mpz_t targetId, mpz_t sId, char* ipAddr,
 				j++;
 			}
 		}
-
 		break;
 
 	default:
@@ -531,6 +532,7 @@ int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port,
 
 	int pktType = buf[1] & 0xFF;
 	int i = 0;
+	
 	switch (pktType) {
 	case REQ_FIND_CLOSEST_FINGER:
 		if (targetId != NULL) {
@@ -547,6 +549,7 @@ int parse(char buf[], mpz_t targetId,  mpz_t sId, char* ipAddr, uint16_t* port,
 	case RES_GET_PRED:
 	case RES_GET_SUCC:
 	case REQ_MODIFY_PRED:
+	case REQ_MODIFY_PRED_TIME_OUT:
 		*port = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
 		uint32_t ip = (buf[4]&0xFF) << 8*3 | (buf[5]&0xFF) << 8*2 
 					| (buf[6]&0xFF) << 8 | (buf[7]&0xFF);
@@ -671,7 +674,7 @@ void sendReqSuccForSuccPkt(int sockfd, char* sIpAddr, uint16_t sPort) {
  * @return         -1 if error, 0 if success
  */
 void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
-					mpz_t id, char* ipAddr, uint16_t port) {
+					mpz_t id, char* ipAddr, uint16_t port, bool timeout) {
 
 	struct sockaddr_in cliAddr;
 	memset(&cliAddr, 0, sizeof(cliAddr));
@@ -683,7 +686,11 @@ void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
 	char* buf = malloc(size);
 	memset(buf, 0, size);
 
-	createReqPkt(buf, 0, id, ipAddr, port, REQ_MODIFY_PRED);
+	if (timeout)
+		createReqPkt(buf, 0, id, ipAddr, port, REQ_MODIFY_PRED_TIME_OUT);
+	else
+		createReqPkt(buf, 0, id, ipAddr, port, REQ_MODIFY_PRED);
+
 	sendto(sockfd, buf, size, 0, (struct sockaddr*)&cliAddr, sizeof(cliAddr));
 
 	free(buf);

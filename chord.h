@@ -26,6 +26,10 @@ mpz_t max; mpz_t min;					/// max and min for comparing Keys
 mpz_t tmp;
 mpz_t tmp2;
 
+//SIMULATION
+mpz_t sim_keys[26000];
+int sim_keys_size;
+
 void initChord(mpz_t id, FILE* keysfp, uint16_t port);
 bool findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort);
 bool closestPrecedingFinger(mpz_t targetId, mpz_t sId, char* ipAddr, uint16_t* port);
@@ -47,10 +51,10 @@ void getKeys(mpz_t id, mpz_t keys[], int keySize, char* data[]);
 void setKeys(mpz_t keys[], int keySize);
 
 void stabilize();
-void notify(const mpz_t);
+void notify(bool timeout);
 void buildSuccessorList();
 void fixFingers();
-void modifyPred(mpz_t id, char* ipAddr, uint16_t port);
+void modifyPred(mpz_t id, char* ipAddr, uint16_t port, bool timeout);
 
 void cpyNodeInfo(struct NodeInfo* src, struct NodeInfo* dst);
 void printMenu();
@@ -62,5 +66,6 @@ void printSuccList();
 
 // For simulation
 uint32_t sim_findSuccessor(mpz_t targetId, mpz_t sId, char* sIpAddr, uint16_t* sPort);
+void sim_failure();
 
 #endif

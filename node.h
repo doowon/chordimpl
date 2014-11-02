@@ -73,7 +73,6 @@ int connfdUDP;
 int connfdTCP;
 
 pthread_t tid[3];				/// pthread (server, client, stablizing)
-// pthread_mutex_t lock;			/// pthrea lock
 
 /* For simulation */
 mpz_t simKeys[512];
@@ -97,7 +96,7 @@ void sendReqClosestFingerPkt(int sockfd, mpz_t targetId, char* sIpAddr, uint16_t
 void sendReqSuccForPredPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendReqSuccForSuccPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendNotifyPkt(int sockfd, char* sIpAddr, uint16_t sPort,
-					mpz_t id, char* ipAddr, uint16_t port);
+					mpz_t id, char* ipAddr, uint16_t port, bool timeout);
 void sendReqSuccForDataPkt(int sockfd, char* sIpAddr, uint16_t sPort);
 void sendReqAlivePkt(int sockfd, char* ipAddr, uint16_t port);
 int recvResDataPkt(int sockfd, unsigned char* data, int* dataSize);
