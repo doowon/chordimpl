@@ -90,18 +90,19 @@ void initChord(mpz_t id, FILE* keysfp, uint16_t port) {
 		fclose(keysfp);
 	}
 
-	if (port == DEFAULT_PORT) {
-		sim_keys_size = 0;
-		FILE* totalkeyFp = fopen("lookupKey/totalSim", "r+");
-		ssize_t read; size_t len; int j = 0;
-		char* line = NULL;
-		while ((read = getline(&line, &len, totalkeyFp)) != -1) {
-			mpz_init(sim_keys[j]);
-			mpz_set_str(sim_keys[j++], line, 16);
-			sim_keys_size++;
-		}
-		fclose(totalkeyFp);
-	}
+	// if (port == DEFAULT_PORT) {
+	// 	sim_keys_size = 0;
+	// 	FILE* totalkeyFp = fopen("lookupKey/totalSim", "r+");
+	// 	ssize_t read; size_t len; int j = 0;
+	// 	char* line = NULL;
+	// 	while ((read = getline(&line, &len, totalkeyFp)) != -1) {
+	// 		// printf("%s\n", line); fflush(stdout);
+	// 		mpz_init(sim_keys[j]);
+	// 		mpz_set_str(sim_keys[j++], line, 16);
+	// 		sim_keys_size++;
+	// 	}
+	// 	fclose(totalkeyFp);
+	// }
 
 	//intialize successor list (make them zero) 
 	for (i = 0 ; i < SLIST_SIZE; ++i) {
@@ -457,9 +458,9 @@ void stabilize() {
 	fixFingers();
 	buildSuccessorList();
 	
-	printDebug();
+	// printDebug();
 	printSuccList();
-	printFT();
+	// printFT();
 
 	// freeStr(str); freeStr(str2);
 	mpz_clear(sId); mpz_clear(predId);
@@ -610,7 +611,7 @@ void askSuccForPred(mpz_t sId, char* sIpAddr, uint16_t sPort,
 }
 
 bool checkAlive(char* ipAddr, uint16_t port) {
-// fprintf(stderr, "[checkAlive] start\n");
+	bool ret = false;
 	struct timeval tv;
 	tv.tv_sec = 0;
 	tv.tv_usec = 500000;
@@ -619,18 +620,24 @@ bool checkAlive(char* ipAddr, uint16_t port) {
 	int  sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
 		fprintf(stderr, "Timeout setting error\n");
-		return false;
+		ret = false;
 	}
-	sendReqAlivePkt(sockfd, ipAddr, port);
-	if (recvfrom(sockfd, buf, size, 0, NULL, NULL) < 0) {
-		fprintf(stderr, "Timeout reached. \n");
-		close(sockfd);
-		return false;
+	int i = 0; int j = 0;
+	for (i = 0; i < 3; ++i) {
+		sendReqAlivePkt(sockfd, ipAddr, port);
+		if (recvfrom(sockfd, buf, size, 0, NULL, NULL) < 0) {
+			fprintf(stderr, "Timeout reached. %d \n", i);
+			j++;
+		}
 	}
+	if (j == 3) 
+		ret = false;
+	else
+		ret = true;
+	
 	close(sockfd);
 	freeStr(buf);
-// fprintf(stderr, "[checkAlive] end\n");
-	return true;
+	return ret;
 }
 
 /**
@@ -939,7 +946,7 @@ void sim_failure() {
 		char* str; char* str2;
 		str = mpz_get_str(NULL, 16, sim_keys[i]);
 		str2 = mpz_get_str(NULL, 16, sId);
-		printf("%s %d\n", str, port); fflush(stdout);
+		printf("%s %s %d\n", str, str2, port); fflush(stdout);
 		free(str); free(str2);
 		// printf("r: %lu\n", (unsigned long) res);
 		// fflush(stdout);

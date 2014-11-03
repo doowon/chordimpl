@@ -28,7 +28,7 @@
 #define DATA_SIZE 1024
 #define FT_SIZE 160
 #define IPADDR_SIZE 15
-#define SLIST_SIZE 64
+#define SLIST_SIZE 200
 #define KEY_SIZE 1024
 
 typedef int bool;

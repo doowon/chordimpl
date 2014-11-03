@@ -8,13 +8,28 @@ if __name__ == "__main__":
 		line = fp.readline()
 		if not line:
 			break
-		fp2 = open("key/" + line, "r")
+		words = line.split()
+		if len(words) != 3:
+			continue
+		
+		# if words[2] == "10185":
+		# 	continue
+		fp2 = open("key/" + words[2], "r")
 		while True:
 			line2 = fp2.readline()
-			if not line:
+			if not line2:
 				notFound += 1
+				# print line.strip()
 				break
-			if line2 is line:
+			
+			l = len(words[0])
+			if l == 39:
+				words[0] = "0" + words[0]
+			elif l == 38:
+				words[0] = "00" + words[0]
+			
+			if line2.strip() == words[0]:
 				found += 1
+				break
 
-print notFound, found, found/notFound
+print notFound, found, notFound+found, float(notFound)/float((notFound+found))

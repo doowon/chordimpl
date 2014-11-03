@@ -7,7 +7,8 @@ import time
 import socket
 from time import sleep
 
-numNode = 2**3
+numNode = 2**5
+# numNode = 100
 defaultPort = 10000
 unsortedNodes = {}
 
@@ -22,44 +23,51 @@ def generateNodes():
 	if not os.path.exists('node'):
 		os.makedirs('node')
 	os.popen('rm -f ./node/*')
+	
+	if not os.path.exists('key'):
+		os.makedirs('key')
+	os.popen('rm -f ./key/*')
+
+	if not os.path.exists('lookupKey'):
+		os.makedirs('lookupKey')
+	os.popen('rm -f ./lookupKey/*')
 
 	for n, h in nodes:
 		file = open('node/' + n, 'w')
+		file2 = open('key/' + n, 'w')
 		file.write(h)
+		file2.write("")
 
 	print nodes
 	return nodes
 
 def generateRandomkeys(nodes):
-	if not os.path.exists('key'):
-		os.makedirs('key')
-	os.popen('rm -f ./key/*')
-
 	keys = []
-	for i in range(100 * numNode):
-		r = random.random()
+	kList = set(range(0, 100*numNode))
+	for i in kList:
+		found = False
 		m = hashlib.sha1()
-		m.update(str(r))
+		m.update(str(i))
 		digest = m.hexdigest()
 		keys.append(digest)
+		totalFile = open('lookupKey/totalSim', 'a')
+		totalFile.write(digest+'\n');
 
 		for n, h in nodes:
 			if digest <= h:
 				file = open('key/'+n, 'a')
 				file.write(digest+'\n')
+				found = True
 				break;
 
-		file = open('key/'+ nodes[0][0], 'a')
-		file.write(digest+'\n')
+		if not found:
+			file = open('key/'+ nodes[0][0], 'a')
+			file.write(digest+'\n')
 
 	return keys
 
 def generateRandomLookupKeys(nodes, keys):
-	if not os.path.exists('lookupKey'):
-		os.makedirs('lookupKey')
-	os.popen('rm -f ./lookupKey/*')
 
-	totalFile = open('lookupKey/totalSim', 'a')
 	for n, h in nodes:
 		r = random.randint(1,100)
 		if len(keys) < r:
@@ -69,8 +77,6 @@ def generateRandomLookupKeys(nodes, keys):
 		file = open('lookupKey/'+ n, 'a')
 		for k in lookupKeys:
 			file.write(k+'\n')
-			totalFile.write(k+'\n');
-
 
 
 if __name__ == "__main__":
@@ -100,12 +106,12 @@ if __name__ == "__main__":
 			p = subprocess.Popen(['./chord', arg[0], arg[1], arg[2], arg[3]], shell=False, stdout=simFileOutput, stderr=tmpFileOutput, preexec_fn=os.setsid)
 			print 'Node ' + str(n) + ' starts running, pid:' + str(p.pid) + ' ' + unsortedNodes[str(n)] +' ' + str(i)
 
-
+"""
 ##FAILURE TEST
 	sleep(2)
-	fraction = 0.05
-	# failNodeNum = int(numNode * fraction)
-	failNodeNum = 1
+	fraction = 0.01
+	failNodeNum = int(numNode * fraction)
+	# failNodeNum = 1
 	failNode = []
 	UDP_IP = "127.0.0.1"
 	msg = bytearray([0xC0,101]) #abort program
@@ -123,7 +129,8 @@ if __name__ == "__main__":
 		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
 		sock.sendto(msg, (UDP_IP, i))
 
-	sleep(20)
+	sleep(200)
 
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
 	sock.sendto(msg2, (UDP_IP, defaultPort))
+"""

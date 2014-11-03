@@ -299,7 +299,8 @@ void listenServerUDPSocket() {
 		case REQ_START_SIM:
 			// printf("START Simulation\n");
 			// fflush(stdout);
-			pthread_create(&(tid[2]), NULL, (void*)&sim_failure, NULL);
+			// pthread_create(&(tid[2]), NULL, (void*)&sim_failure, NULL);
+			pthread_create(&(tid[2]), NULL, (void*)&sim_pathLength, NULL);
 			break;
 
 		case REQ_ABORT:

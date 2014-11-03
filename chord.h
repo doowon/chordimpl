@@ -27,7 +27,7 @@ mpz_t tmp;
 mpz_t tmp2;
 
 //SIMULATION
-mpz_t sim_keys[26000];
+mpz_t sim_keys[30000];
 int sim_keys_size;
 
 void initChord(mpz_t id, FILE* keysfp, uint16_t port);
